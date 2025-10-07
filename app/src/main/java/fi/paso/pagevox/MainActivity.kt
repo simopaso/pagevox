@@ -854,39 +854,3 @@ fun PlayerControls(
         }
     }
 }
-// A new composable function needs to be added for the settings screen.
-// This will be a simple dialog with a text field for the home URL and save/cancel buttons.
-@Composable
-fun SettingsScreen(
-    currentHomeUrl: String,
-    onDismiss: () -> Unit,
-    onSave: (String) -> Unit
-) {
-    var homeUrl by remember { mutableStateOf(currentHomeUrl) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Settings") },
-        text = {
-            Column {
-                Text("Set your home page URL:")
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = homeUrl,
-                    onValueChange = { homeUrl = it },
-                    label = { Text("Home URL") }
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onSave(homeUrl) }) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
