@@ -1,14 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The manifest file for the application. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Permissions required by the application. -->
+    <!-- Allows the app to access the internet. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Allows the app to post notifications. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Allows the app to run as a foreground service. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Allows the app to run as a foreground service for media playback. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Allows the app to connect to Bluetooth devices. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Allows the app to use Bluetooth. -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
 
+    <!-- The application element. -->
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -19,22 +28,26 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PageVox"
         tools:targetApi="34">
+        <!-- The main activity of the application. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.PageVox">
+            <!-- The intent filter for the main activity. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The playback service. -->
         <service
             android:name=".PlaybackService"
             android:enabled="true"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
+            <!-- The intent filter for the playback service. -->
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService"/>
                 <action android:name="android.media.browse.MediaBrowserService" />

@@ -22,36 +22,58 @@ import com.google.common.util.concurrent.ListenableFuture
 import java.util.Locale
 import java.util.UUID
 
+// --- Constants ---
+// Logcat tag for this service.
 private const val TAG = "PlaybackService"
+// The unique ID for the foreground service notification.
 private const val NOTIFICATION_ID = 123
+// The unique ID for the notification channel.
 private const val NOTIFICATION_CHANNEL_ID = "pagevox_playback_channel"
+// The user-visible name of the notification channel.
 private const val NOTIFICATION_CHANNEL_NAME = "PageVox Playback"
 
+/**
+ * A MediaSessionService that handles text-to-speech (TTS) playback.
+ * It integrates with the Android media framework using Media3.
+ */
 class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
 
+    // The MediaSession instance that allows other components to control playback.
     private var mediaSession: MediaSession? = null
+    // The player instance that handles media playback (in this case, a dummy ExoPlayer).
     private lateinit var player: Player
+    // The TextToSpeech engine.
     private lateinit var tts: TextToSpeech
 
+    // A list of sentences to be spoken.
     private var sentences = mutableListOf<String>()
+    // The index of the sentence currently being spoken.
     private var currentSentenceIndex = 0
 
-    // State variables to handle the TTS initialization race condition.
+    // --- State variables to handle the TTS initialization race condition. ---
+    // A flag to indicate whether the TTS engine has been initialized.
     private var isTtsInitialized = false
+    // A Runnable to hold a pending playback request until the TTS engine is ready.
     private var pendingPlayback: Runnable? = null
 
+    /**
+     * Called when the service is created.
+     * It initializes the TTS engine, the player, and the MediaSession.
+     */
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "onCreate")
 
+        // Create a notification channel for the foreground service notification.
         createNotificationChannel()
+        // Start the service as a foreground service to prevent it from being killed by the system.
         startForeground(NOTIFICATION_ID, createNotification())
 
         // TTS initialization is asynchronous. onInit will be called when it's ready.
         tts = TextToSpeech(this, this)
-        
-        // --- THIS IS THE NEW, CORRECTED LOGIC ---
+
+        // Create a dummy ExoPlayer instance to handle media session callbacks.
         player = ExoPlayer.Builder(this).build().apply {
             addListener(object : Player.Listener {
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -66,17 +88,29 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
         }
         player.prepare()
 
+        // Create a MediaSession to integrate with the Android media framework.
         mediaSession = MediaSession.Builder(this, player)
             .setCallback(CustomMediaSessionCallback())
             .build()
         Log.d(TAG, "MediaSession created")
     }
 
+    /**
+     * Called when a media controller wants to connect to the session.
+     *
+     * @param controllerInfo Information about the connecting controller.
+     * @return The MediaSession instance.
+     */
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         Log.d(TAG, "onGetSession for controller: ${controllerInfo.packageName}")
         return mediaSession
     }
 
+    /**
+     * Called when the task that the service is associated with is removed.
+     *
+     * @param rootIntent The original intent that started the task.
+     */
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.d(TAG, "onTaskRemoved")
         if (mediaSession?.player?.playWhenReady == false) {
@@ -84,6 +118,10 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
         }
     }
 
+    /**
+     * Called when the service is being destroyed.
+     * It cleans up resources, such as the TTS engine, the player, and the MediaSession.
+     */
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
         if (::tts.isInitialized) {
@@ -99,6 +137,11 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
     }
 
     // --- TextToSpeech.OnInitListener ---
+    /**
+     * Called when the TTS engine has been initialized.
+     *
+     * @param status The initialization status.
+     */
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             Log.d(TAG, "TTS initialization successful")
@@ -139,6 +182,9 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
         }
     }
 
+    /**
+     * Speaks the next sentence in the list.
+     */
     private fun speakNextSentence() {
         if (!isTtsInitialized) {
             Log.e(TAG, "TTS not initialized, cannot speak.")
@@ -153,8 +199,18 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
     }
 
     // --- MediaSession.Callback ---
+    /**
+     * A custom MediaSession.Callback to handle media session events.
+     */
     @OptIn(UnstableApi::class)
     private inner class CustomMediaSessionCallback : MediaSession.Callback {
+        /**
+         * Called when a controller is connecting to the session.
+         *
+         * @param session The media session.
+         * @param controller The connecting controller.
+         * @return The result of the connection.
+         */
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo
@@ -175,6 +231,15 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
                 .build()
         }
 
+        /**
+         * Called when a custom command is received from a controller.
+         *
+         * @param session The media session.
+         * @param controller The controller that sent the command.
+         * @param customCommand The custom command.
+         * @param args The arguments for the command.
+         * @return A ListenableFuture containing the result of the command.
+         */
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -208,6 +273,12 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
 
+        /**
+         * Called after a controller has connected to the session.
+         *
+         * @param session The media session.
+         * @param controller The connected controller.
+         */
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             Log.d(TAG, "onPostConnect from controller: ${controller.packageName}")
             if (session.player.playbackState == Player.STATE_IDLE) {
@@ -217,6 +288,9 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
     }
 
     // --- Notification related methods ---
+    /**
+     * Creates a notification channel for the foreground service notification.
+     */
     private fun createNotificationChannel() {
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (notificationManager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) == null) {
@@ -229,6 +303,11 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
         }
     }
 
+    /**
+     * Creates the notification for the foreground service.
+     *
+     * @return The notification.
+     */
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("PageVox")
