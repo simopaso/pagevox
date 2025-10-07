@@ -219,11 +219,6 @@ class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
             val connectionResult = super.onConnect(session, controller)
             val availableSessionCommands =
                 connectionResult.availableSessionCommands.buildUpon()
-                    .remove(Player.COMMAND_SEEK_BACK)
-                    .remove(Player.COMMAND_SEEK_FORWARD)
-                    .remove(Player.COMMAND_SEEK_TO_NEXT)
-                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
-                    .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
                     .add(SessionCommand("playSentences", Bundle.EMPTY))
                     .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
