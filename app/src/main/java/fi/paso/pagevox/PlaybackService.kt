@@ -1,18 +1,23 @@
 package fi.paso.pagevox
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.TaskStackBuilder
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import android.util.Log
 import androidx.annotation.OptIn
-import androidx.core.app.NotificationCompat
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.SilenceMediaSource
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -22,293 +27,347 @@ import com.google.common.util.concurrent.ListenableFuture
 import java.util.Locale
 import java.util.UUID
 
-// --- Constants ---
-// Logcat tag for this service.
 private const val TAG = "PlaybackService"
-// The unique ID for the foreground service notification.
-private const val NOTIFICATION_ID = 123
-// The unique ID for the notification channel.
-private const val NOTIFICATION_CHANNEL_ID = "pagevox_playback_channel"
-// The user-visible name of the notification channel.
-private const val NOTIFICATION_CHANNEL_NAME = "PageVox Playback"
 
-/**
- * A MediaSessionService that handles text-to-speech (TTS) playback.
- * It integrates with the Android media framework using Media3.
- */
-class PlaybackService : MediaSessionService(), TextToSpeech.OnInitListener {
+class PlaybackService : MediaSessionService() {
 
-    // The MediaSession instance that allows other components to control playback.
     private var mediaSession: MediaSession? = null
-    // The player instance that handles media playback (in this case, a dummy ExoPlayer).
-    private lateinit var player: Player
-    // The TextToSpeech engine.
+    private lateinit var player: ExoPlayer
     private lateinit var tts: TextToSpeech
 
-    // A list of sentences to be spoken.
-    private var sentences = mutableListOf<String>()
-    // The index of the sentence currently being spoken.
     private var currentSentenceIndex = 0
+    private var isTtsReady = false
 
-    // --- State variables to handle the TTS initialization race condition. ---
-    // A flag to indicate whether the TTS engine has been initialized.
-    private var isTtsInitialized = false
-    // A Runnable to hold a pending playback request until the TTS engine is ready.
-    private var pendingPlayback: Runnable? = null
+    // The voice configured by the user in system TTS settings, captured at init.
+    // Restored whenever the content language matches it.
+    private var userDefaultVoice: Voice? = null
+    // The language tag currently applied to [tts], to avoid redundant switches.
+    private var appliedLanguageTag: String? = null
 
-    /**
-     * Called when the service is created.
-     * It initializes the TTS engine, the player, and the MediaSession.
-     */
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Silent ExoPlayer track whose duration matches the estimated reading time of
+    // the loaded sentences. ExoPlayer drives the notification progress bar from
+    // this; we seek to each sentence's predicted start as TTS speaks it.
+    private val DEFAULT_DURATION_MS = 60_000L
+    private val DURATION_BUFFER_MS = 5_000L
+
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "onCreate")
 
-        // Create a notification channel for the foreground service notification.
-        createNotificationChannel()
-        // Start the service as a foreground service to prevent it from being killed by the system.
-        startForeground(NOTIFICATION_ID, createNotification())
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                // Don't force a language here: leaving the engine untouched means
+                // it uses the voice the user selected in system TTS settings.
+                // We remember that voice so we can restore it whenever the page
+                // language matches it (see applyContentLanguage).
+                userDefaultVoice = try { tts.voice ?: tts.defaultVoice } catch (e: Exception) { null }
+                isTtsReady = true
+                setupTtsListeners()
+                Log.d(TAG, "TTS ready; default voice=${userDefaultVoice?.name} (${userDefaultVoice?.locale})")
+            } else {
+                Log.e(TAG, "TTS init failed: $status")
+            }
+        }
 
-        // TTS initialization is asynchronous. onInit will be called when it's ready.
-        tts = TextToSpeech(this, this)
+        player = ExoPlayer.Builder(this)
+            .setAudioAttributes(AudioAttributes.DEFAULT, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
 
-        // Create a dummy ExoPlayer instance to handle media session callbacks.
-        player = ExoPlayer.Builder(this).build().apply {
-            addListener(object : Player.Listener {
-                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                    if (!playWhenReady) {
-                        // This is the correct way to handle a pause event.
-                        Log.d(TAG, "Player paused (playWhenReady=false). Stopping TTS.")
-                        tts.stop()
-                        pendingPlayback = null
+        player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (playWhenReady) resumePlayback() else pausePlayback()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                // If our duration estimate was short and TTS is still speaking
+                // when the silent track ends, loop back near the end so the
+                // notification doesn't disappear mid-read.
+                if (playbackState == Player.STATE_ENDED && isTtsReady && tts.isSpeaking) {
+                    val dur = player.duration
+                    if (dur > 0) {
+                        player.seekTo((dur - 2_000L).coerceAtLeast(0L))
+                        player.playWhenReady = true
                     }
                 }
-            })
-        }
-        player.prepare()
+            }
 
-        // Create a MediaSession to integrate with the Android media framework.
-        mediaSession = MediaSession.Builder(this, player)
-            .setCallback(CustomMediaSessionCallback())
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e(TAG, "Player error: ${error.message}")
+                player.clearMediaItems()
+            }
+        })
+
+        val pendingIntent = TaskStackBuilder.create(this).run {
+            addNextIntentWithParentStack(Intent(this@PlaybackService, MainActivity::class.java))
+            getPendingIntent(0, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
+
+        mediaSession = MediaSession.Builder(this, TtsSeekingPlayer())
+            .setSessionActivity(pendingIntent)
+            .setCallback(CustomSessionCallback())
             .build()
-        Log.d(TAG, "MediaSession created")
+    }
+
+    // ── ForwardingPlayer that maps notification seek-bar drags onto sentences ──
+    //
+    // The system MediaController (and the media-style notification) calls
+    // seekTo(positionMs) when the user drags the progress bar. Our inner
+    // ExoPlayer just plays silent audio, so a raw seek would do nothing useful
+    // to the TTS. We translate the position back into a sentence index and
+    // restart playback there. Our own internal player.seekTo() calls (in
+    // startPlayback / TTS onStart) bypass this wrapper because they go through
+    // the inner [player] reference directly.
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private inner class TtsSeekingPlayer : ForwardingPlayer(player) {
+        override fun seekTo(positionMs: Long) {
+            handleSessionSeek(positionMs) { super.seekTo(it) }
+        }
+
+        override fun seekTo(mediaItemIndex: Int, positionMs: Long) {
+            handleSessionSeek(positionMs) { super.seekTo(mediaItemIndex, it) }
+        }
+
+        private inline fun handleSessionSeek(positionMs: Long, fallback: (Long) -> Unit) {
+            if (PlaybackDataRepository.sentences.isEmpty()) {
+                fallback(positionMs)
+                return
+            }
+            val target = PlaybackDataRepository.indexAtPositionMs(positionMs)
+            mainHandler.post { startPlayback(target) }
+        }
+    }
+
+    // ── TTS listener ──────────────────────────────────────────────────────────
+
+    private fun setupTtsListeners() {
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                mainHandler.post {
+                    // Seek the silent track to this sentence's predicted start so
+                    // the notification's progress bar advances per sentence.
+                    val startMs = PlaybackDataRepository.getSentenceStartMs(currentSentenceIndex)
+                    if (player.currentMediaItem != null) player.seekTo(startMs)
+                    broadcastCurrentIndex()
+                }
+            }
+
+            override fun onDone(utteranceId: String?) {
+                mainHandler.post {
+                    currentSentenceIndex++
+                    if (player.playWhenReady) speakNextSentence()
+                }
+            }
+
+            override fun onError(utteranceId: String?) {
+                Log.e(TAG, "TTS error on: $utteranceId")
+                mainHandler.post { player.playWhenReady = false }
+            }
+        })
     }
 
     /**
-     * Called when a media controller wants to connect to the session.
-     *
-     * @param controllerInfo Information about the connecting controller.
-     * @return The MediaSession instance.
+     * Pick a TTS voice for the loaded page. The user's system-selected voice is
+     * honored whenever the page language matches it (or the page declares no
+     * language); only a genuinely different content language causes a switch to
+     * that language's voice. Results are memoized so we don't reconfigure the
+     * engine on every playback start for the same language.
      */
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        Log.d(TAG, "onGetSession for controller: ${controllerInfo.packageName}")
-        return mediaSession
+    private fun applyContentLanguage() {
+        if (!isTtsReady) return
+        if (userDefaultVoice == null) {
+            userDefaultVoice = try { tts.voice ?: tts.defaultVoice } catch (e: Exception) { null }
+        }
+        val tag = PlaybackDataRepository.language?.takeIf { it.isNotBlank() }
+        if (tag == appliedLanguageTag) return
+
+        val defaultVoice = userDefaultVoice
+        val defaultLang = defaultVoice?.locale?.language ?: Locale.getDefault().language
+        val pageLocale = tag?.let { Locale.forLanguageTag(it) }?.takeIf { it.language.isNotBlank() }
+
+        when {
+            // No declared language, or same language as the user's voice → keep
+            // the user's chosen voice.
+            pageLocale == null || pageLocale.language == defaultLang -> {
+                if (defaultVoice != null) tts.voice = defaultVoice
+                else if (pageLocale != null) tts.setLanguage(pageLocale)
+            }
+            // Different language → switch to it (engine default voice for that
+            // locale). Fall back to the user's voice if unavailable.
+            else -> {
+                val res = tts.setLanguage(pageLocale)
+                if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    Log.w(TAG, "Content language '$tag' unsupported; using default voice")
+                    if (defaultVoice != null) tts.voice = defaultVoice
+                } else {
+                    Log.d(TAG, "Switched TTS to content language '$tag'")
+                }
+            }
+        }
+        appliedLanguageTag = tag
+    }
+
+    // ── Silent-player helpers ─────────────────────────────────────────────────
+
+    @OptIn(UnstableApi::class)
+    private fun setupSilentPlayer() {
+        val totalMs = PlaybackDataRepository.totalDurationMs
+        val durationMs = if (totalMs > 0) totalMs + DURATION_BUFFER_MS else DEFAULT_DURATION_MS
+        val source = SilenceMediaSource.Factory()
+            .setDurationUs(durationMs * 1_000L)
+            .createMediaSource()
+        player.setMediaSource(source)
+        player.repeatMode = Player.REPEAT_MODE_OFF
+        player.prepare()
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun ensureSilentPlayer() {
+        if (player.currentMediaItem == null) setupSilentPlayer()
+    }
+
+    // ── Playback control ──────────────────────────────────────────────────────
+
+    /**
+     * Called when the system/lock-screen resumes playback (playWhenReady → true).
+     * Only speaks if TTS is idle; avoids double-speaking when startPlayback() already
+     * queued an utterance.
+     */
+    private fun resumePlayback() {
+        if (!isTtsReady) return
+        ensureSilentPlayer()
+        if (!tts.isSpeaking) speakNextSentence()
+    }
+
+    private fun pausePlayback() {
+        if (isTtsReady) tts.stop()
     }
 
     /**
-     * Called when the task that the service is associated with is removed.
+     * Starts fresh playback from [index].
      *
-     * @param rootIntent The original intent that started the task.
+     * Two cases:
+     *  - player was paused (playWhenReady=false): flip it to true → onPlayWhenReadyChanged
+     *    fires → resumePlayback() → speakNextSentence().
+     *  - player was already playing (playWhenReady=true): onPlayWhenReadyChanged won't
+     *    fire again, so we speak the first sentence directly here.
      */
+    private fun startPlayback(index: Int) {
+        if (isTtsReady) tts.stop()
+        applyContentLanguage()
+        currentSentenceIndex = index
+        // Rebuild the silent track with the current sentence list's estimated
+        // total duration so notification progress reflects the loaded page.
+        setupSilentPlayer()
+        val startMs = PlaybackDataRepository.getSentenceStartMs(index)
+        if (startMs > 0) player.seekTo(startMs)
+        if (!player.playWhenReady) {
+            player.playWhenReady = true   // → onPlayWhenReadyChanged → resumePlayback()
+        } else {
+            speakNextSentence()           // player was already playing, trigger directly
+        }
+    }
+
+    private fun stopPlayback() {
+        if (isTtsReady) tts.stop()
+        currentSentenceIndex = 0
+        player.playWhenReady = false
+        player.stop()
+        player.clearMediaItems()
+    }
+
+    private fun speakNextSentence() {
+        val sentence = PlaybackDataRepository.getSentence(currentSentenceIndex)
+        if (sentence != null) {
+            tts.speak(sentence, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+        } else {
+            Log.d(TAG, "End of sentences")
+            currentSentenceIndex = 0
+            broadcastCurrentIndex()   // tell UI to reset highlight to the start
+            player.playWhenReady = false
+            player.stop()
+            player.clearMediaItems()
+        }
+    }
+
+    private fun broadcastCurrentIndex() {
+        val bundle = Bundle().apply { putInt("index", currentSentenceIndex) }
+        mediaSession?.broadcastCustomCommand(SessionCommand("updateIndex", bundle), bundle)
+    }
+
+    // ── MediaSessionService ───────────────────────────────────────────────────
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.d(TAG, "onTaskRemoved")
-        if (mediaSession?.player?.playWhenReady == false) {
-            stopSelf()
-        }
+        // Keep the service alive while actively playing (user may still be listening).
+        // Stop it when paused so we don't leave an idle foreground service forever.
+        if (!player.playWhenReady) stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
-    /**
-     * Called when the service is being destroyed.
-     * It cleans up resources, such as the TTS engine, the player, and the MediaSession.
-     */
     override fun onDestroy() {
-        Log.d(TAG, "onDestroy")
-        if (::tts.isInitialized) {
-            tts.stop()
-            tts.shutdown()
-        }
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
+        if (::tts.isInitialized) {
+            tts.stop()
+            tts.shutdown()
+        }
         super.onDestroy()
     }
 
-    // --- TextToSpeech.OnInitListener ---
-    /**
-     * Called when the TTS engine has been initialized.
-     *
-     * @param status The initialization status.
-     */
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            Log.d(TAG, "TTS initialization successful")
-            isTtsInitialized = true // Mark TTS as ready
-            tts.language = Locale.getDefault()
+    // ── Session callback ──────────────────────────────────────────────────────
 
-            tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {
-                    Log.d(TAG, "TTS onStart")
-                    player.playWhenReady = true
-                }
-
-                override fun onDone(utteranceId: String?) {
-                    Log.d(TAG, "TTS onDone")
-                    currentSentenceIndex++
-                    if (currentSentenceIndex < sentences.size) {
-                        speakNextSentence()
-                    } else {
-                        Log.d(TAG, "Playback finished")
-                        player.playWhenReady = false
-                        player.stop()
-                        player.prepare()
-                    }
-                }
-
-                override fun onError(utteranceId: String?) {
-                    Log.e(TAG, "TTS onError")
-                    player.playWhenReady = false
-                }
-            })
-
-            // If there's a pending playback request, execute it now.
-            pendingPlayback?.run()
-            pendingPlayback = null
-
-        } else {
-            Log.e(TAG, "TTS initialization failed with status: $status")
-        }
-    }
-
-    /**
-     * Speaks the next sentence in the list.
-     */
-    private fun speakNextSentence() {
-        if (!isTtsInitialized) {
-            Log.e(TAG, "TTS not initialized, cannot speak.")
-            return
-        }
-        if (currentSentenceIndex < sentences.size) {
-            val sentence = sentences[currentSentenceIndex]
-            val utteranceId = UUID.randomUUID().toString()
-            Log.d(TAG, "Speaking sentence (index $currentSentenceIndex): $sentence")
-            tts.speak(sentence, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-        }
-    }
-
-    // --- MediaSession.Callback ---
-    /**
-     * A custom MediaSession.Callback to handle media session events.
-     */
     @OptIn(UnstableApi::class)
-    private inner class CustomMediaSessionCallback : MediaSession.Callback {
-        /**
-         * Called when a controller is connecting to the session.
-         *
-         * @param session The media session.
-         * @param controller The connecting controller.
-         * @return The result of the connection.
-         */
+    private inner class CustomSessionCallback : MediaSession.Callback {
+
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
-            Log.d(TAG, "onConnect from controller: ${controller.packageName}")
-            val connectionResult = super.onConnect(session, controller)
-            val availableSessionCommands =
-                connectionResult.availableSessionCommands.buildUpon()
-                    .add(SessionCommand("playSentences", Bundle.EMPTY))
-                    .build()
+            val sessionCommands = super.onConnect(session, controller)
+                .availableSessionCommands.buildUpon()
+                .add(SessionCommand("playSentences", Bundle.EMPTY))
+                .add(SessionCommand("updateIndex",   Bundle.EMPTY))
+                .add(SessionCommand("stopPlayback",  Bundle.EMPTY))
+                .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(availableSessionCommands)
+                .setAvailableSessionCommands(sessionCommands)
                 .build()
         }
 
-        /**
-         * Called when a custom command is received from a controller.
-         *
-         * @param session The media session.
-         * @param controller The controller that sent the command.
-         * @param customCommand The custom command.
-         * @param args The arguments for the command.
-         * @return A ListenableFuture containing the result of the command.
-         */
+        override fun onPostConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ) {
+            super.onPostConnect(session, controller)
+            // Re-broadcast the current sentence index so an activity returning
+            // from background gets the latest reading position without having
+            // to wait for the next TTS sentence boundary.
+            mainHandler.post {
+                if (PlaybackDataRepository.sentences.isNotEmpty()) {
+                    broadcastCurrentIndex()
+                }
+            }
+        }
+
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
             customCommand: SessionCommand,
             args: Bundle
         ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction == "playSentences") {
-                val newSentences = args.getStringArrayList("sentences")
-                val startIndex = args.getInt("startIndex", 0)
-
-                if (newSentences != null && newSentences.isNotEmpty()) {
-                    val playbackAction = Runnable {
-                        Log.d(TAG, "Executing playback action (TTS initialized: $isTtsInitialized)")
-                        sentences.clear()
-                        sentences.addAll(newSentences)
-                        currentSentenceIndex = startIndex
-                        player.stop() // Reset player state before starting
-                        player.prepare()
-                        speakNextSentence()
-                    }
-
-                    if (isTtsInitialized) {
-                        playbackAction.run()
-                    } else {
-                        Log.w(TAG, "TTS not initialized yet. Queuing playback request.")
-                        pendingPlayback = playbackAction
-                    }
-
-                }
+            when (customCommand.customAction) {
+                "playSentences" -> mainHandler.post { startPlayback(args.getInt("startIndex", 0)) }
+                "stopPlayback"  -> mainHandler.post { stopPlayback() }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
-
-        /**
-         * Called after a controller has connected to the session.
-         *
-         * @param session The media session.
-         * @param controller The connected controller.
-         */
-        override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
-            Log.d(TAG, "onPostConnect from controller: ${controller.packageName}")
-            if (session.player.playbackState == Player.STATE_IDLE) {
-                session.player.prepare()
-            }
-        }
-    }
-
-    // --- Notification related methods ---
-    /**
-     * Creates a notification channel for the foreground service notification.
-     */
-    private fun createNotificationChannel() {
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (notificationManager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) == null) {
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                NOTIFICATION_CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_LOW
-            )
-            notificationManager.createNotificationChannel(channel)
-        }
-    }
-
-    /**
-     * Creates the notification for the foreground service.
-     *
-     * @return The notification.
-     */
-    private fun createNotification(): Notification {
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("PageVox")
-            .setContentText("Reading text aloud")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setOngoing(true)
-            .build()
     }
 }

@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.PageVox" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Light variant. The dark variant lives in values-night/themes.xml, giving
+         the app a proper DayNight base theme. Compose (Material 3) draws all UI;
+         this theme only governs the pre-Compose window: a matching background
+         color (no launch flash) and transparent system bars for edge-to-edge. -->
+    <style name="Theme.PageVox" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>
