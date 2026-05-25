@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -89,16 +91,39 @@ private const val TAG = "MainActivity"
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
 // Extracts innerText of semantic elements (falls back to body for .txt pages).
-// Returns a JSON array string so it can be passed back via evaluateJavascript.
-private val EXTRACT_TEXT_JS = """
+// Returns a JSON object string {lang, texts} via evaluateJavascript.
+//
+// When [readerMode] is on, extraction is scoped to the main article: it picks
+// <article>/<main>/[role=main], or the densest text container, and skips
+// chrome (nav/header/footer/aside) so the TTS doesn't read menus and ads.
+private fun extractTextJs(readerMode: Boolean) = """
 (function() {
-    var els = document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,pre');
+    var reader = $readerMode;
+    var root = null;
+    if (reader) {
+        root = document.querySelector('article, main, [role=main]');
+        if (!root) {
+            var best = null, bestLen = 0;
+            var conts = document.querySelectorAll('div, section, article, main');
+            for (var c = 0; c < conts.length; c++) {
+                var ps = conts[c].querySelectorAll('p');
+                var len = 0;
+                for (var p = 0; p < ps.length; p++) len += (ps[p].innerText || '').length;
+                if (len > bestLen) { bestLen = len; best = conts[c]; }
+            }
+            root = best;
+        }
+    }
+    root = root || document.body;
+    var skip = 'nav, header, footer, aside, [role=navigation], [role=banner], [role=complementary]';
+    var els = root.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,pre');
     var texts = [];
     if (els.length === 0) {
-        var b = (document.body.innerText || '').trim();
+        var b = (root.innerText || '').trim();
         if (b) texts.push(b);
     } else {
         for (var i = 0; i < els.length; i++) {
+            if (reader && els[i].closest(skip)) continue;
             var t = (els[i].innerText || '').trim();
             if (t) texts.push(t);
         }
@@ -143,8 +168,38 @@ private fun tapDetectionJs(pxX: Float, pxY: Float) = """
 })();
 """.trimIndent()
 
-private fun extractTexts(webView: WebView?, onResult: (lang: String?, texts: List<String>) -> Unit) {
-    webView?.evaluateJavascript(EXTRACT_TEXT_JS) { result ->
+private const val READER_STYLE_ID = "__pagevox_reader__"
+
+// Reader-mode visual de-clutter: hide common chrome/ads and give the main
+// content a comfortable measure and line height. Removable by its <style> id.
+// (Deliberately conservative — never hides <header>, where article titles live.)
+private val APPLY_READER_JS = """
+(function() {
+    var id = '$READER_STYLE_ID';
+    if (document.getElementById(id)) return;
+    var s = document.createElement('style');
+    s.id = id;
+    s.textContent =
+        'nav, aside, footer, [role=navigation], [role=complementary], .ad, .ads,' +
+        '.advert, .advertisement, ins.adsbygoogle { display: none !important; }' +
+        'html, body { background: initial; }' +
+        'body { max-width: 720px !important; margin: 0 auto !important;' +
+        ' padding: 16px !important; line-height: 1.6 !important; }' +
+        'p, li { font-size: 1.05em !important; }' +
+        'img, video, table { max-width: 100% !important; height: auto !important; }';
+    (document.head || document.documentElement).appendChild(s);
+})();
+""".trimIndent()
+
+private val REMOVE_READER_JS = """
+(function() {
+    var e = document.getElementById('$READER_STYLE_ID');
+    if (e) e.remove();
+})();
+""".trimIndent()
+
+private fun extractTexts(webView: WebView?, readerMode: Boolean, onResult: (lang: String?, texts: List<String>) -> Unit) {
+    webView?.evaluateJavascript(extractTextJs(readerMode)) { result ->
         try {
             val jsonStr = JSONTokener(result).nextValue() as String
             val obj = JSONObject(jsonStr)
@@ -165,12 +220,19 @@ private const val MIN_TEXT_ZOOM = 50
 private const val MAX_TEXT_ZOOM = 300
 private const val TEXT_ZOOM_STEP = 10
 
+// TTS speech rate multiplier (1.0 = the engine's normal pace). The presets the
+// speed control cycles through.
+private const val DEFAULT_SPEECH_RATE = 1.0f
+val SPEECH_RATE_PRESETS = listOf(0.8f, 1.0f, 1.25f, 1.5f, 2.0f)
+
 data class UserPreferences(
     val lastUrl: String,
     val lastSentenceIndex: Int,
     val homeUrl: String,
     val forceDarkWeb: Boolean,
-    val textZoom: Int
+    val textZoom: Int,
+    val speechRate: Float,
+    val readerMode: Boolean
 )
 
 /** A visited or bookmarked page. [title] falls back to the URL when unknown. */
@@ -185,6 +247,8 @@ class SettingsRepository(private val context: Context) {
         val BOOKMARKS = stringPreferencesKey("bookmarks")
         val FORCE_DARK_WEB = booleanPreferencesKey("force_dark_web")
         val TEXT_ZOOM = intPreferencesKey("text_zoom")
+        val SPEECH_RATE = floatPreferencesKey("speech_rate")
+        val READER_MODE = booleanPreferencesKey("reader_mode")
     }
 
     val prefsFlow = context.dataStore.data.map { prefs ->
@@ -193,7 +257,9 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.LAST_SENTENCE_INDEX] ?: 0,
             prefs[Keys.HOME_URL] ?: "https://en.wikipedia.org/wiki/Kotlin_(programming_language)",
             prefs[Keys.FORCE_DARK_WEB] ?: false,
-            prefs[Keys.TEXT_ZOOM] ?: DEFAULT_TEXT_ZOOM
+            prefs[Keys.TEXT_ZOOM] ?: DEFAULT_TEXT_ZOOM,
+            prefs[Keys.SPEECH_RATE] ?: DEFAULT_SPEECH_RATE,
+            prefs[Keys.READER_MODE] ?: false
         )
     }
 
@@ -209,6 +275,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateHomeUrl(url: String) = context.dataStore.edit { it[Keys.HOME_URL] = url }
     suspend fun updateForceDarkWeb(enabled: Boolean) = context.dataStore.edit { it[Keys.FORCE_DARK_WEB] = enabled }
     suspend fun updateTextZoom(zoom: Int) = context.dataStore.edit { it[Keys.TEXT_ZOOM] = zoom }
+    suspend fun updateSpeechRate(rate: Float) = context.dataStore.edit { it[Keys.SPEECH_RATE] = rate }
+    suspend fun updateReaderMode(enabled: Boolean) = context.dataStore.edit { it[Keys.READER_MODE] = enabled }
 
     suspend fun addHistory(page: WebPage) = context.dataStore.edit { prefs ->
         val previous = decodePages(prefs[Keys.HISTORY]).filter { it.url != page.url }
@@ -294,6 +362,8 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var currentPageTitle by mutableStateOf("")
     var forceDarkWeb by mutableStateOf(false)
     var textZoom by mutableIntStateOf(DEFAULT_TEXT_ZOOM)
+    var speechRate by mutableFloatStateOf(DEFAULT_SPEECH_RATE)
+    var readerMode by mutableStateOf(false)
 
     val isCurrentBookmarked: Boolean get() = bookmarks.any { it.url == url }
 
@@ -309,11 +379,18 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         }
         viewModelScope.launch {
             val prefs = repo.prefsFlow.first()
-            url = prefs.lastUrl
             homeUrl = prefs.homeUrl
             forceDarkWeb = prefs.forceDarkWeb
             textZoom = prefs.textZoom
-            initialIndex = prefs.lastSentenceIndex
+            speechRate = prefs.speechRate
+            PlaybackDataRepository.speechRate = prefs.speechRate
+            readerMode = prefs.readerMode
+            // Only restore the saved page if a share/VIEW intent hasn't already
+            // set a URL (loadUrl runs synchronously in onCreate, before this).
+            if (url.isEmpty()) {
+                url = prefs.lastUrl
+                initialIndex = prefs.lastSentenceIndex
+            }
             // Place the indicator at the saved position so it's visible before
             // the first updateIndex broadcast arrives from the service.
             if (currentHighlightIndex < 0 && sentences.isNotEmpty()) {
@@ -330,6 +407,15 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     fun submitAddressBarInput(input: String) {
         val resolved = resolveAddressBarInput(input)
         if (resolved.isNotEmpty()) loadUrl(resolved)
+    }
+
+    /** Handle a URL or text shared into the app (ACTION_SEND / ACTION_VIEW).
+     *  Opens the first URL found in the payload, otherwise treats it as a query. */
+    fun loadSharedText(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        val url = Regex("""https?://\S+""").find(trimmed)?.value
+        if (url != null) loadUrl(url) else submitAddressBarInput(trimmed)
     }
 
     fun loadUrl(newUrl: String) {
@@ -385,6 +471,26 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         if (clamped == textZoom) return
         textZoom = clamped
         viewModelScope.launch { repo.updateTextZoom(clamped) }
+    }
+
+    fun applySpeechRate(rate: Float) {
+        if (rate == speechRate) return
+        speechRate = rate
+        // The playback service reads this before each utterance, so a change
+        // takes effect on the next sentence without a media-session round trip.
+        PlaybackDataRepository.speechRate = rate
+        viewModelScope.launch { repo.updateSpeechRate(rate) }
+    }
+
+    /** Toggle reader mode. Clears extracted text so the next play re-reads the
+     *  distilled content; the visual de-clutter is applied live by the WebView. */
+    fun toggleReaderMode() {
+        readerMode = !readerMode
+        sentences = emptyList()
+        currentHighlightIndex = -1
+        currentSentenceText = ""
+        PlaybackDataRepository.clear()
+        viewModelScope.launch { repo.updateReaderMode(readerMode) }
     }
 
     fun onTextsExtracted(lang: String?, elementTexts: List<String>, onReadyToPlay: () -> Unit) {
@@ -493,10 +599,30 @@ class MainActivity : ComponentActivity() {
             registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        // Open a URL/text shared into the app on cold start. Runs synchronously
+        // before the ViewModel finishes loading prefs, so its init won't clobber
+        // the shared URL (see MainViewModel.init's url.isEmpty() guard).
+        handleShareIntent(intent)
+
         setContent {
             PageVoxTheme {
                 MainScreen(mainViewModel, mediaController)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    /** Route ACTION_VIEW (a tapped/opened link) or ACTION_SEND (Share → PageVox)
+     *  into the browser. */
+    private fun handleShareIntent(intent: Intent?) {
+        when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.data?.toString()?.let { mainViewModel.loadUrl(it) }
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let { mainViewModel.loadSharedText(it) }
         }
     }
 
@@ -637,19 +763,36 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                         )
                     }
                 }
-                BottomBar(isPlaying,
+                BottomBar(
+                    isPlaying = isPlaying,
+                    hasSentences = viewModel.sentences.isNotEmpty(),
+                    speechRate = viewModel.speechRate,
+                    readerMode = viewModel.readerMode,
                     onPlayPause = {
                         if (viewModel.sentences.isEmpty()) {
-                            extractTexts(webView) { lang, texts ->
+                            extractTexts(webView, viewModel.readerMode) { lang, texts ->
                                 viewModel.onTextsExtracted(lang, texts) { togglePlay() }
                             }
                         } else {
                             togglePlay()
                         }
                     },
-                    onSettings = { showSettings = true },
+                    onSkipPrevious = {
+                        controller?.sendCustomCommand(SessionCommand("skipPrevious", Bundle.EMPTY), Bundle.EMPTY)
+                    },
+                    onSkipNext = {
+                        controller?.sendCustomCommand(SessionCommand("skipNext", Bundle.EMPTY), Bundle.EMPTY)
+                    },
                     onTextSmaller = { viewModel.decreaseTextSize() },
                     onTextLarger = { viewModel.increaseTextSize() },
+                    onSetSpeed = { viewModel.applySpeechRate(it) },
+                    onToggleReader = {
+                        viewModel.toggleReaderMode()
+                        // Sentences were cleared; stop any in-progress read so the
+                        // next play re-extracts with the new scoping.
+                        controller?.sendCustomCommand(SessionCommand("stopPlayback", Bundle.EMPTY), Bundle.EMPTY)
+                    },
+                    onSettings = { showSettings = true },
                     onTtsSettings = {
                         try {
                             val intent = Intent("com.android.settings.TTS_SETTINGS")
@@ -681,7 +824,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                                     )
                                 }
                                 if (viewModel.sentences.isEmpty()) {
-                                    extractTexts(webView) { lang, texts ->
+                                    extractTexts(webView, viewModel.readerMode) { lang, texts ->
                                         viewModel.onTextsExtracted(lang, texts) { seekAndPlay() }
                                     }
                                 } else {
@@ -689,7 +832,8 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                                 }
                             },
                             forceDark = viewModel.forceDarkWeb,
-                            textZoom = viewModel.textZoom
+                            textZoom = viewModel.textZoom,
+                            readerMode = viewModel.readerMode
                         )
                     }
                 }
@@ -963,10 +1107,17 @@ fun LibrarySheet(
 @Composable
 fun BottomBar(
     isPlaying: Boolean,
+    hasSentences: Boolean,
+    speechRate: Float,
+    readerMode: Boolean,
     onPlayPause: () -> Unit,
-    onSettings: () -> Unit,
+    onSkipPrevious: () -> Unit,
+    onSkipNext: () -> Unit,
     onTextSmaller: () -> Unit,
     onTextLarger: () -> Unit,
+    onSetSpeed: (Float) -> Unit,
+    onToggleReader: () -> Unit,
+    onSettings: () -> Unit,
     onTtsSettings: () -> Unit
 ) {
     BottomAppBar {
@@ -975,15 +1126,85 @@ fun BottomBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onSettings) { Icon(Icons.Default.Settings, "Settings") }
             IconButton(onTextSmaller) { Icon(Icons.Default.TextDecrease, "Decrease text size") }
+            IconButton(onSkipPrevious, enabled = hasSentences) {
+                Icon(Icons.Default.SkipPrevious, "Previous sentence")
+            }
             FloatingActionButton(onClick = onPlayPause) {
                 Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause")
             }
+            IconButton(onSkipNext, enabled = hasSentences) {
+                Icon(Icons.Default.SkipNext, "Next sentence")
+            }
             IconButton(onTextLarger) { Icon(Icons.Default.TextIncrease, "Increase text size") }
-            IconButton(onTtsSettings) { Icon(Icons.AutoMirrored.Filled.VolumeUp, "TTS Settings") }
+            BottomBarOverflow(
+                speechRate = speechRate,
+                readerMode = readerMode,
+                onSetSpeed = onSetSpeed,
+                onToggleReader = onToggleReader,
+                onSettings = onSettings,
+                onTtsSettings = onTtsSettings
+            )
         }
     }
+}
+
+/** The "⋮" menu in the bottom bar: speed presets, reader mode, settings, TTS. */
+@Composable
+private fun BottomBarOverflow(
+    speechRate: Float,
+    readerMode: Boolean,
+    onSetSpeed: (Float) -> Unit,
+    onToggleReader: () -> Unit,
+    onSettings: () -> Unit,
+    onTtsSettings: () -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More options") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Reader mode") },
+                onClick = { onToggleReader(); open = false },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Article, contentDescription = null) },
+                trailingIcon = { if (readerMode) Icon(Icons.Default.Check, contentDescription = "On") }
+            )
+            HorizontalDivider()
+            Text(
+                "Reading speed",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp)
+            )
+            SPEECH_RATE_PRESETS.forEach { rate ->
+                DropdownMenuItem(
+                    text = { Text(formatSpeed(rate)) },
+                    onClick = { onSetSpeed(rate); open = false },
+                    trailingIcon = {
+                        if (rate == speechRate) Icon(Icons.Default.Check, contentDescription = "Selected")
+                    }
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Settings") },
+                onClick = { onSettings(); open = false },
+                leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) }
+            )
+            DropdownMenuItem(
+                text = { Text("TTS voice settings") },
+                onClick = { onTtsSettings(); open = false },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null) }
+            )
+        }
+    }
+}
+
+/** "1×", "1.25×", … without trailing-zero noise. */
+private fun formatSpeed(rate: Float): String {
+    val s = if (rate % 1f == 0f) rate.toInt().toString()
+            else rate.toString().trimEnd('0').trimEnd('.')
+    return "$s×"
 }
 
 @SuppressLint("ClickableViewAccessibility", "SetJavaScriptEnabled")
@@ -997,13 +1218,15 @@ fun WebViewContainer(
     onCanGoBackChanged: (Boolean) -> Unit,
     onTextTapped: (String) -> Unit,
     forceDark: Boolean,
-    textZoom: Int
+    textZoom: Int,
+    readerMode: Boolean
 ) {
     val context = LocalContext.current
     val latestOnUrlChange = rememberUpdatedState(onUrlChange)
     val latestOnTitleChange = rememberUpdatedState(onTitleChange)
     val latestOnCanGoBackChanged = rememberUpdatedState(onCanGoBackChanged)
     val latestOnTextTapped = rememberUpdatedState(onTextTapped)
+    val latestReaderMode = rememberUpdatedState(readerMode)
 
     val webView = remember {
         WebView(context).apply {
@@ -1031,6 +1254,7 @@ fun WebViewContainer(
                     if (url != null && !url.startsWith("data:")) {
                         latestOnUrlChange.value(url)
                     }
+                    if (latestReaderMode.value) view?.evaluateJavascript(APPLY_READER_JS, null)
                 }
             }
 
@@ -1094,6 +1318,11 @@ fun WebViewContainer(
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, forceDark)
         }
+    }
+
+    // Apply/remove the reader-mode stylesheet live when toggled.
+    LaunchedEffect(readerMode) {
+        webView.evaluateJavascript(if (readerMode) APPLY_READER_JS else REMOVE_READER_JS, null)
     }
 
     AndroidView({ webView }, Modifier.fillMaxSize())

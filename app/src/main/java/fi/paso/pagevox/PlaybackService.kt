@@ -282,6 +282,8 @@ class PlaybackService : MediaSessionService() {
     private fun speakNextSentence() {
         val sentence = PlaybackDataRepository.getSentence(currentSentenceIndex)
         if (sentence != null) {
+            // Honor the user's current speed setting (cheap to set per utterance).
+            tts.setSpeechRate(PlaybackDataRepository.speechRate)
             tts.speak(sentence, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
         } else {
             Log.d(TAG, "End of sentences")
@@ -291,6 +293,15 @@ class PlaybackService : MediaSessionService() {
             player.stop()
             player.clearMediaItems()
         }
+    }
+
+    /** Jump [delta] sentences from the current position and (re)start playback.
+     *  The service holds the authoritative index, so prev/next are exact. */
+    private fun skipSentences(delta: Int) {
+        val count = PlaybackDataRepository.sentences.size
+        if (count == 0) return
+        val target = (currentSentenceIndex + delta).coerceIn(0, count - 1)
+        startPlayback(target)
     }
 
     private fun broadcastCurrentIndex() {
@@ -336,6 +347,8 @@ class PlaybackService : MediaSessionService() {
                 .add(SessionCommand("playSentences", Bundle.EMPTY))
                 .add(SessionCommand("updateIndex",   Bundle.EMPTY))
                 .add(SessionCommand("stopPlayback",  Bundle.EMPTY))
+                .add(SessionCommand("skipNext",      Bundle.EMPTY))
+                .add(SessionCommand("skipPrevious",  Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(sessionCommands)
@@ -366,6 +379,8 @@ class PlaybackService : MediaSessionService() {
             when (customCommand.customAction) {
                 "playSentences" -> mainHandler.post { startPlayback(args.getInt("startIndex", 0)) }
                 "stopPlayback"  -> mainHandler.post { stopPlayback() }
+                "skipNext"      -> mainHandler.post { skipSentences(1) }
+                "skipPrevious"  -> mainHandler.post { skipSentences(-1) }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
