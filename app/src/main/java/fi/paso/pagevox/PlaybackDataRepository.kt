@@ -22,6 +22,14 @@ object PlaybackDataRepository {
     var language: String? = null
         private set
 
+    /**
+     * TTS speech-rate multiplier (1.0 = normal). Set from the UI layer and read
+     * by the playback service before each utterance, so rate changes take effect
+     * without re-plumbing through the media session.
+     */
+    @Volatile
+    var speechRate: Float = 1.0f
+
     fun setSentences(newSentences: List<String>, language: String? = null) {
         _sentences.clear()
         _sentences.addAll(newSentences)
