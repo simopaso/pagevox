@@ -17,6 +17,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -501,8 +502,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        startForegroundService(Intent(this, PlaybackService::class.java))
-
+        // Don't startForegroundService() here: PlaybackService is a Media3
+        // MediaSessionService that only promotes itself to the foreground once
+        // playback begins. Starting it as a foreground service while idle makes a
+        // startForeground() promise that's never kept, which crashes the app when
+        // the service is stopped (e.g. backing out of a clean start). Connecting
+        // a MediaController below binds the service; Media3 handles foregrounding
+        // when the user actually presses play.
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token)
             .setListener(object : MediaController.Listener {
@@ -541,9 +547,13 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     var showSettings by remember { mutableStateOf(false) }
     var showLibrary by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
+    var showExitConfirm by remember { mutableStateOf(false) }
+    val activity = LocalActivity.current
 
-    BackHandler(enabled = canGoBack) {
-        webView?.goBack()
+    // Back navigates the WebView while there's page history; once there isn't,
+    // intercept it to confirm before exiting instead of silently closing.
+    BackHandler {
+        if (canGoBack) webView?.goBack() else showExitConfirm = true
     }
 
     // Stop the service when the user navigates to a different page. We have to
@@ -734,6 +744,23 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             onRemoveBookmark = { viewModel.removeBookmark(it) },
             onClearHistory = { viewModel.clearHistory() },
             onDismiss = { showLibrary = false }
+        )
+    }
+
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = { Text("Exit PageVox?") },
+            text = { Text("There's no previous page to go back to. Close the app?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitConfirm = false
+                    activity?.finish()
+                }) { Text("Exit") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirm = false }) { Text("Cancel") }
+            }
         )
     }
 }
