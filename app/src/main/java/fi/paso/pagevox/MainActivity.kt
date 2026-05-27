@@ -6,8 +6,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -28,6 +31,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -198,6 +203,76 @@ private val REMOVE_READER_JS = """
 })();
 """.trimIndent()
 
+private const val HIGHLIGHT_NAME = "pagevox"
+
+// Follow-along: highlight the sentence currently being read and scroll it into
+// view (karaoke style). Uses the CSS Custom Highlight API so the page DOM is
+// left untouched — important because we also extract text from that DOM. The
+// sentence is located by walking text nodes and matching against a
+// whitespace-collapsed concatenation, so matches that span inline tags (<a>,
+// <em>, …) still work. Degrades gracefully: if the Highlight API is missing the
+// page still scrolls; if the text isn't found nothing happens.
+private fun highlightSentenceJs(sentenceJson: String) = """
+(function(sent){
+    var NAME = '$HIGHLIGHT_NAME';
+    try { if (window.CSS && CSS.highlights) CSS.highlights.delete(NAME); } catch (e) {}
+    if (!sent) return;
+    var target = sent.replace(/\s+/g, ' ').trim();
+    var root = document.body;
+    if (!target || !root) return;
+
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var full = '', map = [], prevSpace = true, node;
+    while (node = walker.nextNode()) {
+        var v = node.nodeValue;
+        for (var i = 0; i < v.length; i++) {
+            var c = v[i];
+            if (/\s/.test(c)) {
+                if (prevSpace) continue;
+                full += ' '; map.push([node, i]); prevSpace = true;
+            } else {
+                full += c; map.push([node, i]); prevSpace = false;
+            }
+        }
+    }
+
+    var idx = full.indexOf(target);
+    if (idx < 0) idx = full.toLowerCase().indexOf(target.toLowerCase());
+    if (idx < 0) return;
+    var s = map[idx], e = map[idx + target.length - 1];
+    if (!s || !e) return;
+
+    var range = document.createRange();
+    try { range.setStart(s[0], s[1]); range.setEnd(e[0], e[1] + 1); } catch (err) { return; }
+
+    if (window.Highlight && window.CSS && CSS.highlights) {
+        try {
+            CSS.highlights.set(NAME, new Highlight(range));
+            if (!document.getElementById('__pagevox_hl_style__')) {
+                var st = document.createElement('style');
+                st.id = '__pagevox_hl_style__';
+                st.textContent = '::highlight($HIGHLIGHT_NAME){background-color:rgba(255,213,79,0.55);color:inherit;}';
+                (document.head || document.documentElement).appendChild(st);
+            }
+        } catch (e2) {}
+    }
+
+    var rect = range.getBoundingClientRect();
+    if (rect && (rect.height || rect.width)) {
+        var vh = window.innerHeight || document.documentElement.clientHeight;
+        // Only scroll when the sentence isn't comfortably in view, then center it.
+        if (rect.top < 80 || rect.bottom > vh - 80) {
+            var y = window.scrollY + rect.top - (vh / 2) + (rect.height / 2);
+            window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+        }
+    }
+})($sentenceJson);
+""".trimIndent()
+
+private val CLEAR_HIGHLIGHT_JS = """
+(function(){ try { if (window.CSS && CSS.highlights) CSS.highlights.delete('$HIGHLIGHT_NAME'); } catch (e) {} })();
+""".trimIndent()
+
 private fun extractTexts(webView: WebView?, readerMode: Boolean, onResult: (lang: String?, texts: List<String>) -> Unit) {
     webView?.evaluateJavascript(extractTextJs(readerMode)) { result ->
         try {
@@ -232,7 +307,9 @@ data class UserPreferences(
     val forceDarkWeb: Boolean,
     val textZoom: Int,
     val speechRate: Float,
-    val readerMode: Boolean
+    val readerMode: Boolean,
+    val followAlong: Boolean,
+    val selectedVoice: String
 )
 
 /** A visited or bookmarked page. [title] falls back to the URL when unknown. */
@@ -249,6 +326,8 @@ class SettingsRepository(private val context: Context) {
         val TEXT_ZOOM = intPreferencesKey("text_zoom")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
         val READER_MODE = booleanPreferencesKey("reader_mode")
+        val FOLLOW_ALONG = booleanPreferencesKey("follow_along")
+        val SELECTED_VOICE = stringPreferencesKey("selected_voice")
     }
 
     val prefsFlow = context.dataStore.data.map { prefs ->
@@ -259,7 +338,9 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.FORCE_DARK_WEB] ?: false,
             prefs[Keys.TEXT_ZOOM] ?: DEFAULT_TEXT_ZOOM,
             prefs[Keys.SPEECH_RATE] ?: DEFAULT_SPEECH_RATE,
-            prefs[Keys.READER_MODE] ?: false
+            prefs[Keys.READER_MODE] ?: false,
+            prefs[Keys.FOLLOW_ALONG] ?: true,
+            prefs[Keys.SELECTED_VOICE] ?: ""
         )
     }
 
@@ -277,6 +358,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateTextZoom(zoom: Int) = context.dataStore.edit { it[Keys.TEXT_ZOOM] = zoom }
     suspend fun updateSpeechRate(rate: Float) = context.dataStore.edit { it[Keys.SPEECH_RATE] = rate }
     suspend fun updateReaderMode(enabled: Boolean) = context.dataStore.edit { it[Keys.READER_MODE] = enabled }
+    suspend fun updateFollowAlong(enabled: Boolean) = context.dataStore.edit { it[Keys.FOLLOW_ALONG] = enabled }
+    suspend fun updateSelectedVoice(name: String) = context.dataStore.edit { it[Keys.SELECTED_VOICE] = name }
 
     suspend fun addHistory(page: WebPage) = context.dataStore.edit { prefs ->
         val previous = decodePages(prefs[Keys.HISTORY]).filter { it.url != page.url }
@@ -349,6 +432,24 @@ fun resolveAddressBarInput(input: String): String {
     return "https://www.google.com/search?q=$query"
 }
 
+/**
+ * Computes the parent "folder" URL by dropping the final path segment.
+ *   https://site.com/a/b/file.txt -> https://site.com/a/b/
+ *   https://site.com/a/b/         -> https://site.com/a/
+ *   https://site.com/a/           -> https://site.com/
+ * Returns null when already at the site root (nothing to go up to).
+ */
+fun parentFolderUrl(rawUrl: String): String? {
+    val uri = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return null
+    val scheme = uri.scheme ?: return null
+    val authority = uri.authority ?: ""
+    // Strip a trailing slash so the final segment can be removed uniformly.
+    val path = (uri.path ?: "").removeSuffix("/")
+    if (path.isEmpty()) return null  // already at root
+    val parent = path.substringBeforeLast('/', missingDelimiterValue = "")
+    return "$scheme://$authority$parent/"
+}
+
 // --- ViewModel ---
 class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var url by mutableStateOf("")
@@ -364,6 +465,8 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var textZoom by mutableIntStateOf(DEFAULT_TEXT_ZOOM)
     var speechRate by mutableFloatStateOf(DEFAULT_SPEECH_RATE)
     var readerMode by mutableStateOf(false)
+    var followAlong by mutableStateOf(true)
+    var selectedVoice by mutableStateOf("")   // "" = system default voice
 
     val isCurrentBookmarked: Boolean get() = bookmarks.any { it.url == url }
 
@@ -385,6 +488,9 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
             speechRate = prefs.speechRate
             PlaybackDataRepository.speechRate = prefs.speechRate
             readerMode = prefs.readerMode
+            followAlong = prefs.followAlong
+            selectedVoice = prefs.selectedVoice
+            PlaybackDataRepository.selectedVoiceName = prefs.selectedVoice.ifBlank { null }
             // Only restore the saved page if a share/VIEW intent hasn't already
             // set a URL (loadUrl runs synchronously in onCreate, before this).
             if (url.isEmpty()) {
@@ -493,13 +599,32 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         viewModelScope.launch { repo.updateReaderMode(readerMode) }
     }
 
+    /** Toggle karaoke-style follow-along (auto-scroll + sentence highlight). */
+    fun toggleFollowAlong() {
+        followAlong = !followAlong
+        viewModelScope.launch { repo.updateFollowAlong(followAlong) }
+    }
+
+    /** Pick an in-app TTS voice by name ("" = system default). Takes effect at
+     *  the next sentence boundary via PlaybackDataRepository. */
+    fun updateSelectedVoice(name: String) {
+        selectedVoice = name
+        PlaybackDataRepository.selectedVoiceName = name.ifBlank { null }
+        viewModelScope.launch { repo.updateSelectedVoice(name) }
+    }
+
     fun onTextsExtracted(lang: String?, elementTexts: List<String>, onReadyToPlay: () -> Unit) {
         viewModelScope.launch {
             isLoading = true
             val result = withContext(Dispatchers.Default) {
                 val extracted = mutableListOf<String>()
                 elementTexts.forEach { text ->
-                    text.split(Regex("(?<=[.!?])\\s+")).forEach { sentence ->
+                    // innerText keeps the newlines the browser inserts for <br>
+                    // and inner block boundaries. Collapse all whitespace runs to a
+                    // single space first, otherwise those embedded newlines survive
+                    // inside a sentence and the TTS engine pauses mid-sentence on them.
+                    val normalized = text.replace(Regex("\\s+"), " ").trim()
+                    normalized.split(Regex("(?<=[.!?])\\s+")).forEach { sentence ->
                         if (sentence.isNotBlank()) extracted.add(sentence.trim())
                     }
                 }
@@ -740,11 +865,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                 history = viewModel.history,
                 isBookmarked = viewModel.isCurrentBookmarked,
                 onGo = { viewModel.submitAddressBarInput(it) },
-                onToggleBookmark = { viewModel.toggleBookmark() },
-                onOpenLibrary = { showLibrary = true },
-                onHome = { viewModel.loadUrl(viewModel.homeUrl) },
-                onBack = { webView?.goBack() },
-                onForward = { webView?.goForward() }
+                onToggleBookmark = { viewModel.toggleBookmark() }
             )
         },
         bottomBar = {
@@ -763,11 +884,22 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                         )
                     }
                 }
+                val parentUrl = remember(viewModel.url) { parentFolderUrl(viewModel.url) }
                 BottomBar(
                     isPlaying = isPlaying,
                     hasSentences = viewModel.sentences.isNotEmpty(),
                     speechRate = viewModel.speechRate,
                     readerMode = viewModel.readerMode,
+                    followAlong = viewModel.followAlong,
+                    onToggleFollowAlong = { viewModel.toggleFollowAlong() },
+                    textZoom = viewModel.textZoom,
+                    canGoBack = canGoBack,
+                    canGoUp = parentUrl != null,
+                    onBack = { webView?.goBack() },
+                    onForward = { webView?.goForward() },
+                    onUp = { parentUrl?.let { viewModel.loadUrl(it) } },
+                    onHome = { viewModel.loadUrl(viewModel.homeUrl) },
+                    onOpenLibrary = { showLibrary = true },
                     onPlayPause = {
                         if (viewModel.sentences.isEmpty()) {
                             extractTexts(webView, viewModel.readerMode) { lang, texts ->
@@ -833,7 +965,8 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                             },
                             forceDark = viewModel.forceDarkWeb,
                             textZoom = viewModel.textZoom,
-                            readerMode = viewModel.readerMode
+                            readerMode = viewModel.readerMode,
+                            followAlong = viewModel.followAlong
                         )
                     }
                 }
@@ -869,6 +1002,8 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             currentHomeUrl = viewModel.homeUrl,
             forceDarkWeb = viewModel.forceDarkWeb,
             onToggleForceDarkWeb = { viewModel.updateForceDarkWeb(it) },
+            selectedVoice = viewModel.selectedVoice,
+            onSelectVoice = { viewModel.updateSelectedVoice(it) },
             onDismiss = { showSettings = false },
             onSave = { newUrl: String ->
                 viewModel.updateHomeUrl(newUrl)
@@ -916,11 +1051,7 @@ fun AddressBar(
     history: List<WebPage>,
     isBookmarked: Boolean,
     onGo: (String) -> Unit,
-    onToggleBookmark: () -> Unit,
-    onOpenLibrary: () -> Unit,
-    onHome: () -> Unit,
-    onBack: () -> Unit,
-    onForward: () -> Unit
+    onToggleBookmark: () -> Unit
 ) {
     var field by remember(url) { mutableStateOf(TextFieldValue(url, TextRange(url.length))) }
     val text = field.text
@@ -950,8 +1081,6 @@ fun AddressBar(
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-            IconButton(onForward) { Icon(Icons.AutoMirrored.Filled.ArrowForward, "Forward") }
             ExposedDropdownMenuBox(
                 expanded = showMenu,
                 onExpandedChange = { },
@@ -1019,8 +1148,6 @@ fun AddressBar(
                     }
                 }
             }
-            IconButton(onOpenLibrary) { Icon(Icons.Default.Bookmarks, "Bookmarks & history") }
-            IconButton(onHome) { Icon(Icons.Default.Home, "Home") }
         }
     }
 }
@@ -1110,6 +1237,16 @@ fun BottomBar(
     hasSentences: Boolean,
     speechRate: Float,
     readerMode: Boolean,
+    followAlong: Boolean,
+    onToggleFollowAlong: () -> Unit,
+    textZoom: Int,
+    canGoBack: Boolean,
+    canGoUp: Boolean,
+    onBack: () -> Unit,
+    onForward: () -> Unit,
+    onUp: () -> Unit,
+    onHome: () -> Unit,
+    onOpenLibrary: () -> Unit,
     onPlayPause: () -> Unit,
     onSkipPrevious: () -> Unit,
     onSkipNext: () -> Unit,
@@ -1126,7 +1263,10 @@ fun BottomBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onTextSmaller) { Icon(Icons.Default.TextDecrease, "Decrease text size") }
+            IconButton(onBack, enabled = canGoBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+            }
+            IconButton(onForward) { Icon(Icons.AutoMirrored.Filled.ArrowForward, "Forward") }
             IconButton(onSkipPrevious, enabled = hasSentences) {
                 Icon(Icons.Default.SkipPrevious, "Previous sentence")
             }
@@ -1136,10 +1276,18 @@ fun BottomBar(
             IconButton(onSkipNext, enabled = hasSentences) {
                 Icon(Icons.Default.SkipNext, "Next sentence")
             }
-            IconButton(onTextLarger) { Icon(Icons.Default.TextIncrease, "Increase text size") }
             BottomBarOverflow(
                 speechRate = speechRate,
                 readerMode = readerMode,
+                followAlong = followAlong,
+                onToggleFollowAlong = onToggleFollowAlong,
+                textZoom = textZoom,
+                canGoUp = canGoUp,
+                onUp = onUp,
+                onHome = onHome,
+                onOpenLibrary = onOpenLibrary,
+                onTextSmaller = onTextSmaller,
+                onTextLarger = onTextLarger,
                 onSetSpeed = onSetSpeed,
                 onToggleReader = onToggleReader,
                 onSettings = onSettings,
@@ -1149,11 +1297,23 @@ fun BottomBar(
     }
 }
 
-/** The "⋮" menu in the bottom bar: speed presets, reader mode, settings, TTS. */
+/**
+ * The "⋮" menu in the bottom bar. Hosts the relocated navigation (up/home/
+ * bookmarks), text-size control, plus speed presets, reader mode, settings, TTS.
+ */
 @Composable
 private fun BottomBarOverflow(
     speechRate: Float,
     readerMode: Boolean,
+    followAlong: Boolean,
+    onToggleFollowAlong: () -> Unit,
+    textZoom: Int,
+    canGoUp: Boolean,
+    onUp: () -> Unit,
+    onHome: () -> Unit,
+    onOpenLibrary: () -> Unit,
+    onTextSmaller: () -> Unit,
+    onTextLarger: () -> Unit,
     onSetSpeed: (Float) -> Unit,
     onToggleReader: () -> Unit,
     onSettings: () -> Unit,
@@ -1164,10 +1324,50 @@ private fun BottomBarOverflow(
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More options") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
+                text = { Text("Up one level") },
+                enabled = canGoUp,
+                onClick = { onUp(); open = false },
+                leadingIcon = { Icon(Icons.Default.ArrowUpward, contentDescription = null) }
+            )
+            DropdownMenuItem(
+                text = { Text("Home") },
+                onClick = { onHome(); open = false },
+                leadingIcon = { Icon(Icons.Default.Home, contentDescription = null) }
+            )
+            DropdownMenuItem(
+                text = { Text("Bookmarks & history") },
+                onClick = { onOpenLibrary(); open = false },
+                leadingIcon = { Icon(Icons.Default.Bookmarks, contentDescription = null) }
+            )
+            HorizontalDivider()
+            // Text-size stepper. These don't close the menu so zoom can be nudged
+            // repeatedly; the current percentage shows between the −/+ buttons.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Text size", style = MaterialTheme.typography.bodyLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onTextSmaller) { Icon(Icons.Default.TextDecrease, "Decrease text size") }
+                    Text("$textZoom%", style = MaterialTheme.typography.labelLarge)
+                    IconButton(onTextLarger) { Icon(Icons.Default.TextIncrease, "Increase text size") }
+                }
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
                 text = { Text("Reader mode") },
                 onClick = { onToggleReader(); open = false },
                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.Article, contentDescription = null) },
                 trailingIcon = { if (readerMode) Icon(Icons.Default.Check, contentDescription = "On") }
+            )
+            DropdownMenuItem(
+                text = { Text("Follow along") },
+                onClick = { onToggleFollowAlong(); open = false },
+                leadingIcon = { Icon(Icons.Default.Highlight, contentDescription = null) },
+                trailingIcon = { if (followAlong) Icon(Icons.Default.Check, contentDescription = "On") }
             )
             HorizontalDivider()
             Text(
@@ -1219,7 +1419,8 @@ fun WebViewContainer(
     onTextTapped: (String) -> Unit,
     forceDark: Boolean,
     textZoom: Int,
-    readerMode: Boolean
+    readerMode: Boolean,
+    followAlong: Boolean
 ) {
     val context = LocalContext.current
     val latestOnUrlChange = rememberUpdatedState(onUrlChange)
@@ -1295,13 +1496,13 @@ fun WebViewContainer(
         }
     }
 
-    LaunchedEffect(currentSentence) {
-        if (currentSentence.isNotEmpty()) {
-            val escaped = JSONObject.quote(currentSentence)
-            webView.evaluateJavascript(
-                "(function(){ window.find($escaped, false, false, true); })();",
-                null
-            )
+    // Follow-along: highlight the active sentence and keep it in view. Gated by
+    // the user toggle; turning it off clears any existing highlight.
+    LaunchedEffect(currentSentence, followAlong) {
+        if (followAlong && currentSentence.isNotEmpty()) {
+            webView.evaluateJavascript(highlightSentenceJs(JSONObject.quote(currentSentence)), null)
+        } else if (!followAlong) {
+            webView.evaluateJavascript(CLEAR_HIGHLIGHT_JS, null)
         }
     }
 
@@ -1456,21 +1657,54 @@ private fun Modifier.verticalText(): Modifier = this
     }
     .graphicsLayer(rotationZ = -90f)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsDialog(
     currentHomeUrl: String,
     forceDarkWeb: Boolean,
     onToggleForceDarkWeb: (Boolean) -> Unit,
+    selectedVoice: String,
+    onSelectVoice: (String) -> Unit,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
     var text by remember(currentHomeUrl) { mutableStateOf(currentHomeUrl) }
 
+    // Enumerate installed voices via a short-lived TTS engine, shut down on
+    // dismiss. We list only locally-available voices, sorted by language.
+    val context = LocalContext.current
+    var voices by remember { mutableStateOf<List<Voice>>(emptyList()) }
+    DisposableEffect(Unit) {
+        var engine: TextToSpeech? = null
+        engine = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                voices = try {
+                    engine?.voices
+                        ?.filter {
+                            !it.isNetworkConnectionRequired &&
+                                !it.features.orEmpty().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+                        }
+                        ?.sortedWith(compareBy({ it.locale.displayName }, { it.name }))
+                        ?: emptyList()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+        }
+        onDispose { engine?.stop(); engine?.shutdown() }
+    }
+
+    var voiceMenuOpen by remember { mutableStateOf(false) }
+    val currentVoiceLabel = when {
+        selectedVoice.isBlank() -> "System default"
+        else -> voices.firstOrNull { it.name == selectedVoice }?.locale?.displayName ?: selectedVoice
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("Home Page URL:")
                 OutlinedTextField(
                     value = text,
@@ -1494,6 +1728,60 @@ fun SettingsDialog(
                     }
                     Spacer(Modifier.width(8.dp))
                     Switch(checked = forceDarkWeb, onCheckedChange = onToggleForceDarkWeb)
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("Reading voice")
+                Text(
+                    "Overrides the system voice for read-aloud",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ExposedDropdownMenuBox(
+                    expanded = voiceMenuOpen,
+                    onExpandedChange = { voiceMenuOpen = !voiceMenuOpen }
+                ) {
+                    OutlinedTextField(
+                        value = currentVoiceLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = voiceMenuOpen) },
+                        modifier = Modifier
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = voiceMenuOpen,
+                        onDismissRequest = { voiceMenuOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("System default") },
+                            onClick = { onSelectVoice(""); voiceMenuOpen = false },
+                            trailingIcon = {
+                                if (selectedVoice.isBlank()) Icon(Icons.Default.Check, "Selected")
+                            }
+                        )
+                        voices.forEach { v ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(v.locale.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            v.name,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                },
+                                onClick = { onSelectVoice(v.name); voiceMenuOpen = false },
+                                trailingIcon = {
+                                    if (v.name == selectedVoice) Icon(Icons.Default.Check, "Selected")
+                                }
+                            )
+                        }
+                    }
                 }
             }
         },

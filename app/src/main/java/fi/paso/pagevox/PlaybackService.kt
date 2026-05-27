@@ -43,6 +43,8 @@ class PlaybackService : MediaSessionService() {
     private var userDefaultVoice: Voice? = null
     // The language tag currently applied to [tts], to avoid redundant switches.
     private var appliedLanguageTag: String? = null
+    // The user-picked voice name currently applied to [tts] (overrides language).
+    private var appliedVoiceName: String? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -181,6 +183,23 @@ class PlaybackService : MediaSessionService() {
         if (userDefaultVoice == null) {
             userDefaultVoice = try { tts.voice ?: tts.defaultVoice } catch (e: Exception) { null }
         }
+
+        // A voice the user explicitly picked in-app overrides content-aware
+        // switching entirely — honor it on every page regardless of language.
+        val selectedName = PlaybackDataRepository.selectedVoiceName?.takeIf { it.isNotBlank() }
+        if (selectedName != null) {
+            if (selectedName == appliedVoiceName) return
+            val voice = try { tts.voices?.firstOrNull { it.name == selectedName } } catch (e: Exception) { null }
+            if (voice != null) {
+                tts.voice = voice
+                appliedVoiceName = selectedName
+                appliedLanguageTag = null   // force a re-evaluation if the user reverts to default
+                Log.d(TAG, "Applied user-selected voice '$selectedName'")
+            }
+            return
+        }
+        appliedVoiceName = null
+
         val tag = PlaybackDataRepository.language?.takeIf { it.isNotBlank() }
         if (tag == appliedLanguageTag) return
 
@@ -282,6 +301,9 @@ class PlaybackService : MediaSessionService() {
     private fun speakNextSentence() {
         val sentence = PlaybackDataRepository.getSentence(currentSentenceIndex)
         if (sentence != null) {
+            // Re-evaluate voice/language so a mid-session voice change (or revert
+            // to default) applies at this sentence boundary; memoized, so cheap.
+            applyContentLanguage()
             // Honor the user's current speed setting (cheap to set per utterance).
             tts.setSpeechRate(PlaybackDataRepository.speechRate)
             tts.speak(sentence, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
