@@ -30,6 +30,16 @@ object PlaybackDataRepository {
     @Volatile
     var speechRate: Float = 1.0f
 
+    /**
+     * Name of the TTS voice the user picked in-app, or null/blank to follow the
+     * system default (and the content-aware language logic). Read by the playback
+     * service when configuring the engine; a user choice overrides auto-switching.
+     * Deliberately not cleared by [clear] — it's a persistent user preference, not
+     * page-scoped state.
+     */
+    @Volatile
+    var selectedVoiceName: String? = null
+
     fun setSentences(newSentences: List<String>, language: String? = null) {
         _sentences.clear()
         _sentences.addAll(newSentences)
