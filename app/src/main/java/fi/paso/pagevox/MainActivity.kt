@@ -59,9 +59,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -796,6 +799,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     var webView: WebView? by remember { mutableStateOf(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showLicenses by remember { mutableStateOf(false) }
     var showLibrary by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var showExitConfirm by remember { mutableStateOf(false) }
@@ -1004,12 +1008,17 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             onToggleForceDarkWeb = { viewModel.updateForceDarkWeb(it) },
             selectedVoice = viewModel.selectedVoice,
             onSelectVoice = { viewModel.updateSelectedVoice(it) },
+            onShowLicenses = { showLicenses = true },
             onDismiss = { showSettings = false },
             onSave = { newUrl: String ->
                 viewModel.updateHomeUrl(newUrl)
                 showSettings = false
             }
         )
+    }
+
+    if (showLicenses) {
+        LicensesDialog(onDismiss = { showLicenses = false })
     }
 
     if (showLibrary) {
@@ -1665,6 +1674,7 @@ fun SettingsDialog(
     onToggleForceDarkWeb: (Boolean) -> Unit,
     selectedVoice: String,
     onSelectVoice: (String) -> Unit,
+    onShowLicenses: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
@@ -1783,6 +1793,23 @@ fun SettingsDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onShowLicenses() }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text("Open-source licenses")
+                }
             }
         },
         confirmButton = {
@@ -1796,4 +1823,109 @@ fun SettingsDialog(
             }
         }
     )
+}
+
+// Third-party components bundled in the app, grouped by license. Update this
+// list when dependencies in build.gradle.kts change.
+private val APACHE_LIBRARIES = listOf(
+    "Android Jetpack Compose (UI, Material 3, Material Icons)",
+    "AndroidX Core KTX",
+    "AndroidX Activity Compose",
+    "AndroidX Lifecycle",
+    "AndroidX DataStore Preferences",
+    "AndroidX WebKit",
+    "AndroidX Media3 (ExoPlayer, Session, UI)",
+    "Kotlin Standard Library",
+    "Guava (via Media3)"
+)
+
+private val MIT_JSOUP_LICENSE = """
+The MIT License
+
+Copyright (c) 2009-2024 Jonathan Hedley (https://jsoup.org/)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+""".trimIndent()
+
+/** Full-screen list of the open-source software bundled in the app, with the
+ *  full text of each license. The Apache text is loaded from assets. */
+@Composable
+fun LicensesDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val apacheText = remember {
+        runCatching {
+            context.assets.open("licenses/apache-2.0.txt").bufferedReader().use { it.readText() }
+        }.getOrDefault("See https://www.apache.org/licenses/LICENSE-2.0")
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onDismiss) { Icon(Icons.Default.Close, "Close") }
+                    Text("Open-source licenses", style = MaterialTheme.typography.titleLarge)
+                }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        "PageVox is built with the following open-source software.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(20.dp))
+
+                    Text("Apache License 2.0", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    APACHE_LIBRARIES.forEach {
+                        Text("•  $it", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        apacheText,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(28.dp))
+
+                    Text("MIT License", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text("•  jsoup", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        MIT_JSOUP_LICENSE,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(48.dp))
+                }
+            }
+        }
+    }
 }

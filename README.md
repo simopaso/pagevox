@@ -73,4 +73,11 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **1.8**. No license is specified yet — please ask before reusing.
+Personal project, actively developed. Current version: **2.0**.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify,
+and distribute this software under its terms, which include an explicit patent
+grant. Bundled third-party libraries remain under their own licenses
+(Apache 2.0 and MIT).
