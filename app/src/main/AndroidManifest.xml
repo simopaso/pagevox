@@ -12,10 +12,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Allows the app to run as a foreground service for media playback. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- Allows the app to connect to Bluetooth devices. -->
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- Allows the app to use Bluetooth. -->
-    <uses-permission android:name="android.permission.BLUETOOTH" />
 
     <!-- The application element. -->
     <application

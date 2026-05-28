@@ -73,7 +73,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.0**.
+Personal project, actively developed. Current version: **2.1**.
 
 ## License
 
