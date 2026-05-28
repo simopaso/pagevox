@@ -303,6 +303,8 @@ private const val TEXT_ZOOM_STEP = 10
 private const val DEFAULT_SPEECH_RATE = 1.0f
 val SPEECH_RATE_PRESETS = listOf(0.8f, 1.0f, 1.25f, 1.5f, 2.0f)
 
+private const val PRIVACY_POLICY_URL = "https://paso.fi/pagevox-privacy.html"
+
 data class UserPreferences(
     val lastUrl: String,
     val lastSentenceIndex: Int,
@@ -1809,6 +1811,25 @@ fun SettingsDialog(
                     )
                     Spacer(Modifier.width(12.dp))
                     Text("Open-source licenses")
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                            }
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.PrivacyTip,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text("Privacy policy")
                 }
             }
         },
