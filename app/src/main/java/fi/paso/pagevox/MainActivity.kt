@@ -455,6 +455,21 @@ fun parentFolderUrl(rawUrl: String): String? {
     return "$scheme://$authority$parent/"
 }
 
+/** Canonical form used to detect harmless URL redirects (trailing slash,
+ *  http→https upgrade, fragment changes, host case). Two URLs that normalize
+ *  to the same string represent the "same page" for reading-position purposes. */
+private fun normalizeUrlForCompare(u: String): String = try {
+    val uri = Uri.parse(u)
+    val scheme = (uri.scheme ?: "").lowercase().let { if (it == "http") "https" else it }
+    val host = (uri.authority ?: "").lowercase()
+    val path = (uri.path ?: "").trimEnd('/')
+    val q = uri.query?.takeIf { it.isNotBlank() }
+    buildString {
+        append(scheme).append("://").append(host).append(path)
+        if (q != null) append('?').append(q)
+    }
+} catch (e: Exception) { u }
+
 // --- ViewModel ---
 class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var url by mutableStateOf("")
@@ -530,18 +545,28 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     }
 
     fun loadUrl(newUrl: String) {
-        if (newUrl != url) {
+        if (newUrl == url) return
+        // A page that redirects to a normalized form of the same URL (trailing
+        // slash, http→https, fragment change, host case) is NOT a navigation —
+        // treat it as the same page so the saved reading position survives.
+        // Without this, reopening the app after the process was killed while
+        // paused would lose position whenever the page issues such a redirect
+        // (very common: e.g. /article → /article/).
+        if (url.isNotEmpty() && normalizeUrlForCompare(newUrl) == normalizeUrlForCompare(url)) {
             url = newUrl
-            currentPageTitle = ""
-            currentHighlightIndex = -1
-            currentSentenceText = ""
-            initialIndex = 0
-            sentences = emptyList()
-            viewModelScope.launch {
-                repo.updateLastUrl(newUrl)
-                repo.updateLastIndex(0)
-                repo.addHistory(WebPage(newUrl, newUrl))
-            }
+            viewModelScope.launch { repo.updateLastUrl(newUrl) }
+            return
+        }
+        url = newUrl
+        currentPageTitle = ""
+        currentHighlightIndex = -1
+        currentSentenceText = ""
+        initialIndex = 0
+        sentences = emptyList()
+        viewModelScope.launch {
+            repo.updateLastUrl(newUrl)
+            repo.updateLastIndex(0)
+            repo.addHistory(WebPage(newUrl, newUrl))
         }
     }
 
