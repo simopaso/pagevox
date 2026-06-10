@@ -37,6 +37,10 @@ class PlaybackService : MediaSessionService() {
 
     private var currentSentenceIndex = 0
     private var isTtsReady = false
+    // A playSentences command received before the TTS engine finished
+    // initializing. Replayed at the end of the init callback so the user
+    // isn't left tapping Play to no effect on a cold service start.
+    private var pendingStartIndex: Int? = null
 
     // The voice configured by the user in system TTS settings, captured at init.
     // Restored whenever the content language matches it.
@@ -69,8 +73,14 @@ class PlaybackService : MediaSessionService() {
                 isTtsReady = true
                 setupTtsListeners()
                 Log.d(TAG, "TTS ready; default voice=${userDefaultVoice?.name} (${userDefaultVoice?.locale})")
+                // If the user tapped Play before init completed, honor it now.
+                pendingStartIndex?.let { idx ->
+                    pendingStartIndex = null
+                    mainHandler.post { startPlayback(idx) }
+                }
             } else {
                 Log.e(TAG, "TTS init failed: $status")
+                pendingStartIndex = null
             }
         }
 
@@ -291,7 +301,12 @@ class PlaybackService : MediaSessionService() {
      *    fire again, so we speak the first sentence directly here.
      */
     private fun startPlayback(index: Int) {
-        if (isTtsReady) try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
+        if (!isTtsReady) {
+            // Defer until the engine finishes initializing.
+            pendingStartIndex = index
+            return
+        }
+        try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
         applyContentLanguage()
         currentSentenceIndex = index
         // Rebuild the silent track with the current sentence list's estimated
@@ -332,7 +347,13 @@ class PlaybackService : MediaSessionService() {
         } else {
             Log.d(TAG, "End of sentences")
             currentSentenceIndex = 0
-            broadcastCurrentIndex()   // tell UI to reset highlight to the start
+            // Tell the UI playback has finished so it can clear the highlight.
+            // We send a distinct command (not updateIndex=0) so the UI does NOT
+            // persist 0 over the user's last-known position — that would mean a
+            // page finishing in the background wipes the resume point.
+            mediaSession?.broadcastCustomCommand(
+                SessionCommand("playbackEnded", Bundle.EMPTY), Bundle.EMPTY
+            )
             player.playWhenReady = false
             player.stop()
             player.clearMediaItems()
@@ -390,6 +411,7 @@ class PlaybackService : MediaSessionService() {
                 .availableSessionCommands.buildUpon()
                 .add(SessionCommand("playSentences", Bundle.EMPTY))
                 .add(SessionCommand("updateIndex",   Bundle.EMPTY))
+                .add(SessionCommand("playbackEnded", Bundle.EMPTY))
                 .add(SessionCommand("stopPlayback",  Bundle.EMPTY))
                 .add(SessionCommand("skipNext",      Bundle.EMPTY))
                 .add(SessionCommand("skipPrevious",  Bundle.EMPTY))

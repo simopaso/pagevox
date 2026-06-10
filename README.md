@@ -33,7 +33,6 @@
 - Android **TextToSpeech** for narration
 - **WebView** (+ `androidx.webkit` for algorithmic dark rendering) for page display and the CSS Custom Highlight API
 - **DataStore Preferences** for settings and persisted state
-- **jsoup** for HTML parsing
 
 ## Architecture
 
@@ -80,4 +79,4 @@ Personal project, actively developed. Current version: **2.1.1**.
 Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify,
 and distribute this software under its terms, which include an explicit patent
 grant. Bundled third-party libraries remain under their own licenses
-(Apache 2.0 and MIT).
+(Apache 2.0).
