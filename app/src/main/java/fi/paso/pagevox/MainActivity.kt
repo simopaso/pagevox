@@ -676,6 +676,17 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         viewModelScope.launch { repo.updateLastIndex(index) }
     }
 
+    /** Service finished reading the last sentence. Clear the visual highlight
+     *  and reset the "where to start next" pointer to the beginning, but DON'T
+     *  touch the persisted lastSentenceIndex — leave it at the final sentence
+     *  so a relaunch resumes the saved position instead of silently jumping to
+     *  0 if the page happened to finish in the background. */
+    fun onPlaybackEnded() {
+        currentHighlightIndex = -1
+        currentSentenceText = ""
+        initialIndex = 0
+    }
+
     fun getStartIndex(): Int = initialIndex
 
     fun findSentenceIndex(clickedText: String): Int {
@@ -798,8 +809,9 @@ class MainActivity : ComponentActivity() {
                     command: SessionCommand,
                     args: Bundle
                 ): ListenableFuture<SessionResult> {
-                    if (command.customAction == "updateIndex") {
-                        mainViewModel.updateHighlight(args.getInt("index"))
+                    when (command.customAction) {
+                        "updateIndex"   -> mainViewModel.updateHighlight(args.getInt("index"))
+                        "playbackEnded" -> mainViewModel.onPlaybackEnded()
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -1885,30 +1897,6 @@ private val APACHE_LIBRARIES = listOf(
     "Guava (via Media3)"
 )
 
-private val MIT_JSOUP_LICENSE = """
-The MIT License
-
-Copyright (c) 2009-2024 Jonathan Hedley (https://jsoup.org/)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-""".trimIndent()
-
 /** Full-screen list of the open-source software bundled in the app, with the
  *  full text of each license. The Apache text is loaded from assets. */
 @Composable
@@ -1953,18 +1941,6 @@ fun LicensesDialog(onDismiss: () -> Unit) {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         apacheText,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(28.dp))
-
-                    Text("MIT License", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text("•  jsoup", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        MIT_JSOUP_LICENSE,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

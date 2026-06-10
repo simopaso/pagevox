@@ -98,8 +98,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     // DataStore for storing key-value pairs
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    // Jsoup for parsing HTML
-    implementation("org.jsoup:jsoup:1.18.1")
     // WebKit compat for native WebView dark rendering (algorithmic darkening)
     implementation("androidx.webkit:webkit:1.16.0")
     // ViewModel integration for Compose
