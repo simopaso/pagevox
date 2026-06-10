@@ -191,10 +191,16 @@ class PlaybackService : MediaSessionService() {
             if (selectedName == appliedVoiceName) return
             val voice = try { tts.voices?.firstOrNull { it.name == selectedName } } catch (e: Exception) { null }
             if (voice != null) {
-                tts.voice = voice
-                appliedVoiceName = selectedName
-                appliedLanguageTag = null   // force a re-evaluation if the user reverts to default
-                Log.d(TAG, "Applied user-selected voice '$selectedName'")
+                try {
+                    tts.voice = voice
+                    appliedVoiceName = selectedName
+                    appliedLanguageTag = null   // force a re-evaluation if the user reverts to default
+                    Log.d(TAG, "Applied user-selected voice '$selectedName'")
+                } catch (e: Exception) {
+                    // Some 3rd-party engines throw when reconfigured after the
+                    // service has been backgrounded — don't take the process down.
+                    Log.e(TAG, "Failed to apply voice '$selectedName'", e)
+                }
             }
             return
         }
@@ -207,24 +213,28 @@ class PlaybackService : MediaSessionService() {
         val defaultLang = defaultVoice?.locale?.language ?: Locale.getDefault().language
         val pageLocale = tag?.let { Locale.forLanguageTag(it) }?.takeIf { it.language.isNotBlank() }
 
-        when {
-            // No declared language, or same language as the user's voice → keep
-            // the user's chosen voice.
-            pageLocale == null || pageLocale.language == defaultLang -> {
-                if (defaultVoice != null) tts.voice = defaultVoice
-                else if (pageLocale != null) tts.setLanguage(pageLocale)
-            }
-            // Different language → switch to it (engine default voice for that
-            // locale). Fall back to the user's voice if unavailable.
-            else -> {
-                val res = tts.setLanguage(pageLocale)
-                if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Log.w(TAG, "Content language '$tag' unsupported; using default voice")
+        try {
+            when {
+                // No declared language, or same language as the user's voice → keep
+                // the user's chosen voice.
+                pageLocale == null || pageLocale.language == defaultLang -> {
                     if (defaultVoice != null) tts.voice = defaultVoice
-                } else {
-                    Log.d(TAG, "Switched TTS to content language '$tag'")
+                    else if (pageLocale != null) tts.setLanguage(pageLocale)
+                }
+                // Different language → switch to it (engine default voice for that
+                // locale). Fall back to the user's voice if unavailable.
+                else -> {
+                    val res = tts.setLanguage(pageLocale)
+                    if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        Log.w(TAG, "Content language '$tag' unsupported; using default voice")
+                        if (defaultVoice != null) tts.voice = defaultVoice
+                    } else {
+                        Log.d(TAG, "Switched TTS to content language '$tag'")
+                    }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to apply content language '$tag'", e)
         }
         appliedLanguageTag = tag
     }
@@ -262,7 +272,13 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun pausePlayback() {
-        if (isTtsReady) tts.stop()
+        if (!isTtsReady) return
+        // tts.stop() can throw IllegalStateException on some engines (notably
+        // Samsung's) when the service has been backgrounded while paused and
+        // the engine has been partially reclaimed by the system. Swallow it
+        // so a pause never crashes the process — the worst case is that the
+        // current utterance finishes naturally.
+        try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
     }
 
     /**
@@ -275,7 +291,7 @@ class PlaybackService : MediaSessionService() {
      *    fire again, so we speak the first sentence directly here.
      */
     private fun startPlayback(index: Int) {
-        if (isTtsReady) tts.stop()
+        if (isTtsReady) try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
         applyContentLanguage()
         currentSentenceIndex = index
         // Rebuild the silent track with the current sentence list's estimated
@@ -291,7 +307,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun stopPlayback() {
-        if (isTtsReady) tts.stop()
+        if (isTtsReady) try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
         currentSentenceIndex = 0
         player.playWhenReady = false
         player.stop()
@@ -304,9 +320,15 @@ class PlaybackService : MediaSessionService() {
             // Re-evaluate voice/language so a mid-session voice change (or revert
             // to default) applies at this sentence boundary; memoized, so cheap.
             applyContentLanguage()
-            // Honor the user's current speed setting (cheap to set per utterance).
-            tts.setSpeechRate(PlaybackDataRepository.speechRate)
-            tts.speak(sentence, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+            // Wrap the engine calls: a misbehaving TTS engine throwing here used
+            // to take the whole process down. Treat as a soft stop instead.
+            try {
+                tts.setSpeechRate(PlaybackDataRepository.speechRate)
+                tts.speak(sentence, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+            } catch (e: Exception) {
+                Log.e(TAG, "tts.speak() failed", e)
+                player.playWhenReady = false
+            }
         } else {
             Log.d(TAG, "End of sentences")
             currentSentenceIndex = 0
@@ -349,8 +371,8 @@ class PlaybackService : MediaSessionService() {
             mediaSession = null
         }
         if (::tts.isInitialized) {
-            tts.stop()
-            tts.shutdown()
+            try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
+            try { tts.shutdown() } catch (e: Exception) { Log.e(TAG, "tts.shutdown() failed", e) }
         }
         super.onDestroy()
     }
