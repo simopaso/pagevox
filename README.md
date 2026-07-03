@@ -23,7 +23,7 @@
 - **Bookmarks & history** — save pages, revisit recent ones, and get address-bar autocomplete from your history.
 - **Quick navigation** — back/forward, up-one-folder, home, and a full-width address bar.
 - **Share & open-with** — send text or links from other apps to PageVox, or set it as a handler for `http`/`https` links.
-- **Resumes where you left off** — the last page and reading position are restored on launch.
+- **Resumes where you left off** — the last page and reading position are restored on launch, and every page in your history remembers its own reading position.
 - **Material You** — dynamic color, edge-to-edge, and light/dark theming.
 
 ## Tech stack
@@ -79,7 +79,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.2**.
+Personal project, actively developed. Current version: **2.3**.
 
 ## License
 

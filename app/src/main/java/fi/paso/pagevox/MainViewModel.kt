@@ -103,11 +103,16 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         currentPageTitle = ""
         currentHighlightIndex = -1
         currentSentenceText = ""
-        initialIndex = 0
+        // Revisited pages resume from their saved per-page position (kept on
+        // the history entry); genuinely new pages start at the top.
+        val savedPosition = history.firstOrNull {
+            normalizeUrlForCompare(it.url) == normalizeUrlForCompare(newUrl)
+        }?.position ?: 0
+        initialIndex = savedPosition
         sentences = emptyList()
         viewModelScope.launch {
             repo.updateLastUrl(newUrl)
-            repo.updateLastIndex(0)
+            repo.updateLastIndex(savedPosition)
             repo.addHistory(WebPage(newUrl, newUrl))
         }
     }
@@ -196,9 +201,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
                     // single space first, otherwise those embedded newlines survive
                     // inside a sentence and the TTS engine pauses mid-sentence on them.
                     val normalized = text.replace(Regex("\\s+"), " ").trim()
-                    normalized.split(Regex("(?<=[.!?])\\s+")).forEach { sentence ->
-                        if (sentence.isNotBlank()) extracted.add(sentence.trim())
-                    }
+                    extracted.addAll(splitIntoSentences(normalized))
                 }
                 if (extracted.isNotEmpty()) extracted else null
             }
@@ -215,7 +218,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         currentHighlightIndex = index
         initialIndex = index
         currentSentenceText = sentences.getOrElse(index) { "" }
-        viewModelScope.launch { repo.updateLastIndex(index) }
+        viewModelScope.launch { repo.updateReadingPosition(url, index) }
     }
 
     /** Service finished reading the last sentence. Clear the visual highlight
@@ -240,9 +243,10 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         val normalizedClicked = normalize(clickedText)
         if (normalizedClicked.isEmpty()) return -1
 
-        val firstSentence = clickedText.trim()
-            .split(Regex("(?<=[.!?])\\s+"))
-            .firstOrNull { it.isNotBlank() }
+        // Must use the same splitter as extraction, or tap-to-sentence matching
+        // disagrees about where sentences begin.
+        val firstSentence = splitIntoSentences(clickedText.trim())
+            .firstOrNull()
             ?.let { normalize(it) }
             ?: normalizedClicked
 

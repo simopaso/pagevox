@@ -37,8 +37,10 @@ data class UserPreferences(
     val selectedVoice: String
 )
 
-/** A visited or bookmarked page. [title] falls back to the URL when unknown. */
-data class WebPage(val url: String, val title: String)
+/** A visited or bookmarked page. [title] falls back to the URL when unknown.
+ *  [position] is the sentence index reading last stopped at on that page, so
+ *  every page in history remembers its own resume point. */
+data class WebPage(val url: String, val title: String, val position: Int = 0)
 
 class SettingsRepository(private val context: Context) {
     private object Keys {
@@ -86,16 +88,40 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateFollowAlong(enabled: Boolean) = context.dataStore.edit { it[Keys.FOLLOW_ALONG] = enabled }
     suspend fun updateSelectedVoice(name: String) = context.dataStore.edit { it[Keys.SELECTED_VOICE] = name }
 
+    /** Move [page] to the top of history. A revisit (matched on the normalized
+     *  URL, so redirect variants don't duplicate) keeps the known title and the
+     *  saved reading position of the old entry. */
     suspend fun addHistory(page: WebPage) = context.dataStore.edit { prefs ->
-        val previous = decodePages(prefs[Keys.HISTORY]).filter { it.url != page.url }
-        prefs[Keys.HISTORY] = encodePages((listOf(page) + previous).take(HISTORY_LIMIT))
+        val existing = decodePages(prefs[Keys.HISTORY])
+        val key = normalizeUrlForCompare(page.url)
+        val old = existing.firstOrNull { normalizeUrlForCompare(it.url) == key }
+        val merged = page.copy(
+            title = if (page.title == page.url && old != null) old.title else page.title,
+            position = old?.position ?: page.position
+        )
+        val rest = existing.filter { normalizeUrlForCompare(it.url) != key }
+        prefs[Keys.HISTORY] = encodePages((listOf(merged) + rest).take(HISTORY_LIMIT))
     }
 
     /** Patch the title of the most recent history entry for [url], once known. */
     suspend fun updatePageTitle(url: String, title: String) = context.dataStore.edit { prefs ->
         val current = decodePages(prefs[Keys.HISTORY])
         if (current.firstOrNull()?.url == url && current.first().title != title) {
-            prefs[Keys.HISTORY] = encodePages(listOf(WebPage(url, title)) + current.drop(1))
+            prefs[Keys.HISTORY] = encodePages(listOf(current.first().copy(title = title)) + current.drop(1))
+        }
+    }
+
+    /** Persist the reading position: the global last-index (relaunch restore)
+     *  and the per-page position on [url]'s history entry, in one edit — this
+     *  runs at every sentence boundary, so don't write the file twice. */
+    suspend fun updateReadingPosition(url: String, index: Int) = context.dataStore.edit { prefs ->
+        prefs[Keys.LAST_SENTENCE_INDEX] = index
+        val key = normalizeUrlForCompare(url)
+        val current = decodePages(prefs[Keys.HISTORY])
+        if (current.any { normalizeUrlForCompare(it.url) == key }) {
+            prefs[Keys.HISTORY] = encodePages(current.map {
+                if (normalizeUrlForCompare(it.url) == key) it.copy(position = index) else it
+            })
         }
     }
 
@@ -115,7 +141,14 @@ class SettingsRepository(private val context: Context) {
 
         fun encodePages(pages: List<WebPage>): String {
             val arr = JSONArray()
-            pages.forEach { arr.put(JSONObject().put("url", it.url).put("title", it.title)) }
+            pages.forEach {
+                arr.put(
+                    JSONObject()
+                        .put("url", it.url)
+                        .put("title", it.title)
+                        .put("position", it.position)
+                )
+            }
             return arr.toString()
         }
 
@@ -126,7 +159,11 @@ class SettingsRepository(private val context: Context) {
                 (0 until arr.length()).map { i ->
                     val o = arr.getJSONObject(i)
                     val url = o.getString("url")
-                    WebPage(url, o.optString("title", url).ifBlank { url })
+                    WebPage(
+                        url,
+                        o.optString("title", url).ifBlank { url },
+                        o.optInt("position", 0)
+                    )
                 }
             } catch (e: Exception) {
                 emptyList()
