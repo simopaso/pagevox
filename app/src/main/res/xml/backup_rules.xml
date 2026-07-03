@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+   Back up only PageVox's own settings (the DataStore file holding preferences,
+   bookmarks, history, and the reading position). Everything else — notably
+   WebView's internal profile (app_webview/: cookies, local storage, session
+   state) — must NOT be backed up: restoring it onto a different device or
+   WebView build hands the engine corrupt state, which has caused an infinite
+   page-reload loop after a device-to-device transfer.
+   Note: this file applies to devices below API 31; data_extraction_rules.xml
+   covers API 31+.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <include domain="file" path="datastore/" />
 </full-backup-content>

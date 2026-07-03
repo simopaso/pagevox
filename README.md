@@ -40,7 +40,14 @@ The app runs the UI and a media-session service in the same process, bridged by 
 
 | File | Responsibility |
 | --- | --- |
-| `MainActivity.kt` | Compose UI and `MainViewModel`: address bar, WebView host, bottom controls, reader/settings/library, text extraction and sentence splitting. |
+| `MainActivity.kt` | Activity: intent handling (share/open-with), MediaController connection to the service. |
+| `MainViewModel.kt` | UI state and actions: navigation, sentence splitting, reading position, settings. |
+| `MainScreen.kt` | Top-level Compose screen: scaffold, bottom controls, dialogs wiring. |
+| `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingPositionSlider.kt` | Individual UI components. |
+| `WebViewContainer.kt` | WebView host: page lifecycle, tap-to-seek, follow-along highlight, state save/restore. |
+| `PageScripts.kt` | The JavaScript injected into pages: text extraction, tap detection, reader mode, sentence highlighting. |
+| `SettingsRepository.kt` | DataStore-backed preferences, history, and bookmarks. |
+| `UrlUtils.kt` | Address-bar input resolution and URL normalization helpers. |
 | `PlaybackService.kt` | A Media3 `MediaSessionService` that owns the `TextToSpeech` engine, speaks sentences, and drives a silent ExoPlayer track so the notification's progress bar reflects reading position. |
 | `PlaybackDataRepository.kt` | In-process bridge between UI and service: the sentence list with estimated durations, page language, speech rate, and the selected voice. |
 
@@ -72,7 +79,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.1.2**.
+Personal project, actively developed. Current version: **2.2**.
 
 ## License
 

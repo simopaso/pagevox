@@ -1,19 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+   Back up / transfer only PageVox's own settings (the DataStore file holding
+   preferences, bookmarks, history, and the reading position). WebView's
+   internal profile (app_webview/: cookies, local storage, session state) must
+   NOT migrate between devices: restoring it under a different WebView build
+   hands the engine corrupt state, which has caused an infinite page-reload
+   loop after a device-to-device transfer. (backup_rules.xml mirrors this for
+   devices below API 31.)
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <include domain="file" path="datastore/" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <include domain="file" path="datastore/" />
     </device-transfer>
-    -->
 </data-extraction-rules>
