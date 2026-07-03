@@ -7,6 +7,9 @@ package fi.paso.pagevox
  */
 object PlaybackDataRepository {
     private val _sentences = mutableListOf<String>()
+    // Per-sentence estimates at 1× speed; the published timeline below is these
+    // divided by the current speech rate, rebuilt whenever either changes.
+    private val _baseDurationsMs = mutableListOf<Long>()
     private val _sentenceStartsMs = mutableListOf<Long>()
     private var _totalDurationMs = 0L
 
@@ -25,10 +28,16 @@ object PlaybackDataRepository {
     /**
      * TTS speech-rate multiplier (1.0 = normal). Set from the UI layer and read
      * by the playback service before each utterance, so rate changes take effect
-     * without re-plumbing through the media session.
+     * without re-plumbing through the media session. Setting it also rescales
+     * the estimated timeline so the notification progress bar stays honest at
+     * non-1× speeds.
      */
     @Volatile
     var speechRate: Float = 1.0f
+        set(value) {
+            field = value
+            rebuildTimeline()
+        }
 
     /**
      * Name of the TTS voice the user picked in-app, or null/blank to follow the
@@ -44,20 +53,28 @@ object PlaybackDataRepository {
         _sentences.clear()
         _sentences.addAll(newSentences)
         this.language = language
-        _sentenceStartsMs.clear()
-        var cumulative = 0L
-        for (sentence in _sentences) {
-            _sentenceStartsMs.add(cumulative)
-            cumulative += estimateSentenceDurationMs(sentence)
-        }
-        _totalDurationMs = cumulative
+        _baseDurationsMs.clear()
+        _sentences.mapTo(_baseDurationsMs) { estimateSentenceDurationMs(it) }
+        rebuildTimeline()
     }
 
     fun clear() {
         _sentences.clear()
+        _baseDurationsMs.clear()
         _sentenceStartsMs.clear()
         _totalDurationMs = 0L
         language = null
+    }
+
+    private fun rebuildTimeline() {
+        _sentenceStartsMs.clear()
+        val rate = speechRate.coerceAtLeast(0.1f)
+        var cumulative = 0L
+        for (base in _baseDurationsMs) {
+            _sentenceStartsMs.add(cumulative)
+            cumulative += (base / rate).toLong()
+        }
+        _totalDurationMs = cumulative
     }
 
     fun getSentence(index: Int): String? =

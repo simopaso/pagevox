@@ -21,9 +21,9 @@ android {
         // The target Android API level for the app.
         targetSdk = 36
         // An internal version number for the app.
-        versionCode = 13
+        versionCode = 14
         // A user-facing version number for the app.
-        versionName = "2.1.2"
+        versionName = "2.2"
 
         // The fully qualified class name of the test instrumentation runner.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -36,8 +36,11 @@ android {
     buildTypes {
         // Configuration for the 'release' build type.
         release {
-            // Disables code shrinking and obfuscation for the release build.
-            isMinifyEnabled = false
+            // R8 code shrinking + obfuscation and resource shrinking. The app
+            // has no reflection or @JavascriptInterface surface, and the
+            // AndroidX/Media3 libraries ship their own consumer keep rules.
+            isMinifyEnabled = true
+            isShrinkResources = true
             // Specifies the ProGuard configuration files to use.
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
