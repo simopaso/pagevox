@@ -23,6 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
@@ -176,6 +179,28 @@ fun WebViewContainer(
         } else if (!followAlong) {
             webView.evaluateJavascript(CLEAR_HIGHLIGHT_JS, null)
         }
+    }
+
+    // Re-assert the follow-along highlight when the app returns to the
+    // foreground. The effect above is keyed on the sentence *text*, so a resume
+    // that lands on the same sentence it paused on won't re-run it — yet the
+    // WebView may have dropped the CSS highlight during the background period
+    // (re-layout, renderer trim). Without this, the highlight stays missing
+    // until playback advances to the next sentence or the page is reloaded.
+    val latestSentence = rememberUpdatedState(currentSentence)
+    val latestFollowAlong = rememberUpdatedState(followAlong)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val sentence = latestSentence.value
+                if (latestFollowAlong.value && sentence.isNotEmpty()) {
+                    webView.evaluateJavascript(highlightSentenceJs(JSONObject.quote(sentence)), null)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Reflect the user's text-size choice; WebView re-lays-out the page live.
