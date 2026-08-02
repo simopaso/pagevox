@@ -55,14 +55,43 @@ internal fun extractTextJs(readerMode: Boolean) = """
 })();
 """.trimIndent()
 
-// Returns the text of the element at the tapped pixel coordinates.
-// Uses document.elementFromPoint, which works regardless of click handlers
-// and is reliable for plain text where the DOM click event often doesn't fire
-// in Android WebView.
+// Returns page text starting at the tapped point, so playback can seek to the
+// tapped sentence. The primary path uses caretRangeFromPoint to find the exact
+// character under the finger — essential on plain-text pages, <pre> stories, or
+// single-container articles, where the whole readable body is ONE block and
+// element-level detection would return the entire document (always resolving to
+// the first sentence). Falls back to nearest-block text only if no caret API.
 internal fun tapDetectionJs(pxX: Float, pxY: Float) = """
 (function() {
     var cx = $pxX / window.devicePixelRatio;
     var cy = $pxY / window.devicePixelRatio;
+
+    var textNode = null, offset = 0;
+    if (document.caretRangeFromPoint) {
+        var r = document.caretRangeFromPoint(cx, cy);
+        if (r) { textNode = r.startContainer; offset = r.startOffset; }
+    } else if (document.caretPositionFromPoint) {
+        var p = document.caretPositionFromPoint(cx, cy);
+        if (p) { textNode = p.offsetNode; offset = p.offset; }
+    }
+
+    if (textNode && textNode.nodeType === 3) {
+        // Collect ~200 chars from the caret forward, in document order, so the
+        // snippet begins exactly where the user tapped (usually mid-sentence).
+        var out = textNode.nodeValue.substring(offset);
+        if (out.length < 200) {
+            var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+            walker.currentNode = textNode;
+            var n;
+            while (out.length < 200 && (n = walker.nextNode())) {
+                out += ' ' + n.nodeValue;
+            }
+        }
+        out = out.replace(/\s+/g, ' ').trim();
+        if (out.length > 3) return out;
+    }
+
+    // Fallback: nearest block element's text (engines without a caret API).
     var el = document.elementFromPoint(cx, cy);
     if (!el) return '';
     var blockTags = ['P','H1','H2','H3','H4','H5','H6','LI','PRE','BLOCKQUOTE','ARTICLE'];
@@ -72,13 +101,6 @@ internal fun tapDetectionJs(pxX: Float, pxY: Float) = """
             var text = (node.innerText || node.textContent || '').trim();
             if (text.length > 5) return text;
         }
-        node = node.parentElement;
-    }
-    // Fallback: any ancestor with substantial text content.
-    node = el;
-    for (var j = 0; j < 5 && node && node !== document.body; j++) {
-        var t = (node.innerText || node.textContent || '').trim();
-        if (t.length > 20) return t;
         node = node.parentElement;
     }
     return '';
