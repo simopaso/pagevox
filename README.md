@@ -14,7 +14,7 @@
 - **Tap to start anywhere** — tap a paragraph to begin reading from that sentence.
 - **Follow-along** — the sentence being read is highlighted on the page and auto-scrolled into view, karaoke style. Toggle it off for audio-only.
 - **Reader mode** — strips navigation, ads, and clutter for distraction-free reading and cleaner narration.
-- **Reading-position slider** — a slim vertical scrubber on the screen edge to jump anywhere in the page.
+- **Reading-position scrubber** — a full-width scrubber above the controls to jump anywhere in the page, with a live preview of the sentence you'll land on.
 - **Adjustable speed** — 0.8× to 2× presets, applied without interrupting playback.
 - **Skip by sentence** — jump to the previous or next sentence.
 - **Text size** — zoom the page in/out for comfortable reading.
@@ -43,7 +43,7 @@ The app runs the UI and a media-session service in the same process, bridged by 
 | `MainActivity.kt` | Activity: intent handling (share/open-with), MediaController connection to the service. |
 | `MainViewModel.kt` | UI state and actions: navigation, sentence splitting, reading position, settings. |
 | `MainScreen.kt` | Top-level Compose screen: scaffold, bottom controls, dialogs wiring. |
-| `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingPositionSlider.kt` | Individual UI components. |
+| `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingScrubber.kt` | Individual UI components. |
 | `WebViewContainer.kt` | WebView host: page lifecycle, tap-to-seek, follow-along highlight, state save/restore. |
 | `PageScripts.kt` | The JavaScript injected into pages: text extraction, tap detection, reader mode, sentence highlighting. |
 | `SettingsRepository.kt` | DataStore-backed preferences, history, and bookmarks. |
@@ -79,7 +79,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.3**.
+Personal project, actively developed. Current version: **2.12**.
 
 ## License
 
