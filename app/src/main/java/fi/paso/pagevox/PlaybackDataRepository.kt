@@ -26,6 +26,33 @@ object PlaybackDataRepository {
         private set
 
     /**
+     * URL of the page the current [sentences] were extracted from. The service
+     * persists the reading position against this URL directly (see
+     * PlaybackService.persistPosition), so a pause or sentence boundary reaches
+     * disk even when no Activity/MediaController is connected — e.g. the user
+     * paused from the lock-screen notification while the app was backgrounded.
+     */
+    @Volatile
+    var pageUrl: String? = null
+        private set
+
+    /**
+     * The sentence index currently being read, published by the playback service
+     * as it speaks. This is the authoritative resume point *within the process*:
+     * unlike the service's own currentSentenceIndex it survives the service being
+     * destroyed (a paused MediaSessionService is torn down after a few minutes,
+     * resetting that instance field to 0), and unlike the ViewModel's initialIndex
+     * it stays correct while the app is backgrounded (the ViewModel only advances
+     * that when a MediaController is connected, i.e. in the foreground). The
+     * ViewModel reads this when deciding where a plain Play/resume starts. On a
+     * genuinely fresh process this object is recreated at 0 and the position is
+     * seeded from disk instead — see [setSentences]'s startIndex and
+     * MainViewModel.init.
+     */
+    @Volatile
+    var currentIndex: Int = 0
+
+    /**
      * TTS speech-rate multiplier (1.0 = normal). Set from the UI layer and read
      * by the playback service before each utterance, so rate changes take effect
      * without re-plumbing through the media session. Setting it also rescales
@@ -49,10 +76,19 @@ object PlaybackDataRepository {
     @Volatile
     var selectedVoiceName: String? = null
 
-    fun setSentences(newSentences: List<String>, language: String? = null) {
+    fun setSentences(
+        newSentences: List<String>,
+        language: String? = null,
+        pageUrl: String? = null,
+        startIndex: Int = 0
+    ) {
         _sentences.clear()
         _sentences.addAll(newSentences)
         this.language = language
+        this.pageUrl = pageUrl
+        // Seed the resume point for this freshly-loaded page. On a cold start the
+        // caller passes the position restored from disk; on a new page it's 0.
+        currentIndex = startIndex.coerceIn(0, (newSentences.size - 1).coerceAtLeast(0))
         _baseDurationsMs.clear()
         _sentences.mapTo(_baseDurationsMs) { estimateSentenceDurationMs(it) }
         rebuildTimeline()
@@ -64,6 +100,8 @@ object PlaybackDataRepository {
         _sentenceStartsMs.clear()
         _totalDurationMs = 0L
         language = null
+        pageUrl = null
+        currentIndex = 0
     }
 
     private fun rebuildTimeline() {

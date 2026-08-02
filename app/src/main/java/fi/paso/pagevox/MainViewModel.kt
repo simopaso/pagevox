@@ -34,6 +34,17 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
 
     private var initialIndex = 0
 
+    // Set to the restored URL while a cold-start restore is in flight, cleared
+    // the first time loadUrl() sees that page settle. The WebView's very first
+    // onPageFinished callback for a restored page can report a materially
+    // different URL — a canonical redirect, an added tracking/session query
+    // param, an AMP variant — none of which loadUrl() can reliably recognize
+    // as "still the same page" via URL comparison alone (normalizeUrlForCompare
+    // only catches trivial variants like a trailing slash). Trusting the
+    // already-correct initialIndex restored from prefs instead of re-deriving
+    // it from a URL match sidesteps that guessing game entirely.
+    private var pendingRestoreUrl: String? = null
+
     init {
         // If the service kept running while this ViewModel was recreated
         // (e.g. process-priority shuffling) the singleton repository still has
@@ -58,6 +69,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
             if (url.isEmpty()) {
                 url = prefs.lastUrl
                 initialIndex = prefs.lastSentenceIndex
+                pendingRestoreUrl = prefs.lastUrl
             }
             // Place the indicator at the saved position so it's visible before
             // the first updateIndex broadcast arrives from the service.
@@ -86,14 +98,33 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         if (url != null) loadUrl(url) else submitAddressBarInput(trimmed)
     }
 
+    /** The WebView reported the URL it settled on after loading — including
+     *  whatever redirect the server issued along the way. Distinct from
+     *  [loadUrl] (explicit navigation): the very first such report after a
+     *  cold-start restore is the restored page settling, however much its
+     *  final URL drifted from what was saved (canonical redirect, an added
+     *  query param, an AMP variant, ...) — not a navigation away from it. Keep
+     *  the initialIndex already restored from prefs instead of re-deriving it
+     *  from a URL match a real redirect can easily defeat; see
+     *  [pendingRestoreUrl]. */
+    fun onPageUrlSettled(newUrl: String) {
+        if (pendingRestoreUrl != null) {
+            pendingRestoreUrl = null
+            url = newUrl
+            viewModelScope.launch { repo.updateLastUrl(newUrl) }
+            return
+        }
+        loadUrl(newUrl)
+    }
+
     fun loadUrl(newUrl: String) {
+        // Any explicit navigation means we're no longer waiting to confirm the
+        // cold-start restore, even if the WebView hasn't reported back yet.
+        pendingRestoreUrl = null
         if (newUrl == url) return
         // A page that redirects to a normalized form of the same URL (trailing
         // slash, http→https, fragment change, host case) is NOT a navigation —
         // treat it as the same page so the saved reading position survives.
-        // Without this, reopening the app after the process was killed while
-        // paused would lose position whenever the page issues such a redirect
-        // (very common: e.g. /article → /article/).
         if (url.isNotEmpty() && normalizeUrlForCompare(newUrl) == normalizeUrlForCompare(url)) {
             url = newUrl
             viewModelScope.launch { repo.updateLastUrl(newUrl) }
@@ -207,18 +238,29 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
             }
             if (result != null) {
                 sentences = result
-                PlaybackDataRepository.setSentences(sentences, lang)
+                // Seed the resume point from initialIndex (restored from disk on
+                // a cold start, or the per-page saved position when revisiting).
+                // Warm restarts don't re-extract, so this only runs when the
+                // sentence set is genuinely (re)built.
+                PlaybackDataRepository.setSentences(sentences, lang, url, initialIndex)
                 onReadyToPlay()
             }
             isLoading = false
         }
     }
 
+    /** Reflect the service's current sentence index in the UI (highlight, slider,
+     *  "Now Reading" bar). Persisting this to disk is the service's job, not the
+     *  UI's — it happens via PlaybackService.persistPosition() regardless of
+     *  whether a MediaController is connected, so a pause or sentence boundary
+     *  is saved even while the app is backgrounded. Routing it through here too
+     *  would only reach disk while the app is in the foreground, which is the
+     *  exact gap that used to lose the position on a background/lock-screen
+     *  pause followed by the app being closed. */
     fun updateHighlight(index: Int) {
         currentHighlightIndex = index
         initialIndex = index
         currentSentenceText = sentences.getOrElse(index) { "" }
-        viewModelScope.launch { repo.updateReadingPosition(url, index) }
     }
 
     /** Service finished reading the last sentence. Clear the visual highlight
@@ -232,7 +274,14 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         initialIndex = 0
     }
 
-    fun getStartIndex(): Int = initialIndex
+    /** Where a plain Play/resume should start. The authoritative value is the
+     *  playback singleton's currentIndex — it tracks the service's real position
+     *  and, being process-scoped, survives the service instance being destroyed
+     *  while paused (the exact case where the stale ViewModel initialIndex used
+     *  to send resume back to sentence 0). [initialIndex] is only a fallback for
+     *  the brief window before the sentence set has been (re)built. */
+    fun getStartIndex(): Int =
+        if (sentences.isNotEmpty()) PlaybackDataRepository.currentIndex else initialIndex
 
     fun findSentenceIndex(clickedText: String): Int {
         if (sentences.isEmpty()) return -1
