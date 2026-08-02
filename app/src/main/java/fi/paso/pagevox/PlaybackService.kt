@@ -24,6 +24,11 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
@@ -52,6 +57,15 @@ class PlaybackService : MediaSessionService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Owns persistence of the reading position. Deliberately not routed through
+    // the Activity/MediaController — that connection only exists while the app
+    // is in the foreground (MainActivity tears it down in onStop()), so a pause
+    // triggered from the lock-screen/notification while the app is backgrounded
+    // would otherwise never reach disk. A SupervisorJob scoped to the service's
+    // own lifecycle (cancelled in onDestroy) survives Activity teardown.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var settingsRepo: SettingsRepository
+
     // Silent ExoPlayer track whose duration matches the estimated reading time of
     // the loaded sentences. ExoPlayer drives the notification progress bar from
     // this; we seek to each sentence's predicted start as TTS speaks it.
@@ -62,6 +76,14 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "onCreate")
+
+        settingsRepo = SettingsRepository(applicationContext)
+        // Adopt the position preserved in the process-scoped singleton. When a
+        // paused service is destroyed and later recreated (same process), this
+        // is how the new instance resumes where the old one left off instead of
+        // restarting from sentence 0. On a genuinely fresh process the singleton
+        // is 0 and the position is seeded from disk when the page is extracted.
+        currentSentenceIndex = PlaybackDataRepository.currentIndex
 
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -164,6 +186,7 @@ class PlaybackService : MediaSessionService() {
                     val startMs = PlaybackDataRepository.getSentenceStartMs(currentSentenceIndex)
                     if (player.currentMediaItem != null) player.seekTo(startMs)
                     broadcastCurrentIndex()
+                    persistPosition()
                 }
             }
 
@@ -289,6 +312,25 @@ class PlaybackService : MediaSessionService() {
         // so a pause never crashes the process — the worst case is that the
         // current utterance finishes naturally.
         try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
+        // Belt-and-braces: onStart already persisted this sentence's index when
+        // it began speaking, but a pause is exactly the moment a task-removal
+        // teardown (onTaskRemoved stops the service when paused) might follow
+        // within moments, so make sure the write is in flight right now too.
+        persistPosition()
+    }
+
+    /** Save the current sentence index against the loaded page's URL, straight
+     *  to disk from the service — not routed through the Activity/ViewModel, so
+     *  it lands even when no MediaController is connected (app backgrounded or
+     *  paused from the lock-screen notification). See [serviceScope]. */
+    private fun persistPosition() {
+        // Publish to the in-process singleton first: this is what a resume reads
+        // when the process is still alive but this service instance has been
+        // (or is about to be) destroyed, so it must be updated even when there's
+        // no pageUrl to write to disk against.
+        PlaybackDataRepository.currentIndex = currentSentenceIndex
+        val url = PlaybackDataRepository.pageUrl ?: return
+        serviceScope.launch { settingsRepo.updateReadingPosition(url, currentSentenceIndex) }
     }
 
     /**
@@ -395,6 +437,7 @@ class PlaybackService : MediaSessionService() {
             try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
             try { tts.shutdown() } catch (e: Exception) { Log.e(TAG, "tts.shutdown() failed", e) }
         }
+        serviceScope.cancel()
         super.onDestroy()
     }
 
