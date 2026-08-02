@@ -16,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -103,20 +102,30 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
         },
         bottomBar = {
             Column {
-                if (viewModel.currentSentenceText.isNotEmpty()) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = viewModel.currentSentenceText,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                HorizontalReadingScrubber(
+                    totalSentences = viewModel.sentences.size,
+                    currentIndex = viewModel.currentHighlightIndex,
+                    sentences = viewModel.sentences,
+                    onSeekChange = { idx ->
+                        // Live-scroll the WebView to the sentence under the thumb.
+                        val text = viewModel.sentences.getOrNull(idx)
+                        if (text != null) {
+                            val escaped = JSONObject.quote(text)
+                            webView?.evaluateJavascript(
+                                "(function(){ window.find($escaped, false, false, true); })();",
+                                null
+                            )
+                        }
+                    },
+                    onSeekFinished = { idx ->
+                        // Commit: start playback from this position (the service
+                        // broadcasts updateIndex, which drives the thumb + highlight).
+                        val args = Bundle().apply { putInt("startIndex", idx) }
+                        controller?.sendCustomCommand(
+                            SessionCommand("playSentences", Bundle.EMPTY), args
                         )
                     }
-                }
+                )
                 val parentUrl = remember(viewModel.url) { parentFolderUrl(viewModel.url) }
                 BottomBar(
                     isPlaying = isPlaying,
@@ -170,60 +179,39 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
         }
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
-            Row(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f).fillMaxHeight()) {
-                    if (viewModel.url.isNotEmpty()) {
-                        WebViewContainer(
-                            url = viewModel.url,
-                            currentSentence = viewModel.currentSentenceText,
-                            onWebViewReady = { webView = it },
-                            onUrlChange = { viewModel.loadUrl(it) },
-                            onTitleChange = { pageUrl, title -> viewModel.onPageTitle(pageUrl, title) },
-                            onCanGoBackChanged = { canGoBack = it },
-                            onTextTapped = { clickedText ->
-                                val seekAndPlay = {
-                                    val idx = viewModel.findSentenceIndex(clickedText).coerceAtLeast(0)
-                                    val args = Bundle().apply { putInt("startIndex", idx) }
-                                    controller?.sendCustomCommand(
-                                        SessionCommand("playSentences", Bundle.EMPTY), args
-                                    )
-                                }
-                                if (viewModel.sentences.isEmpty()) {
-                                    extractTexts(webView, viewModel.readerMode) { lang, texts ->
-                                        viewModel.onTextsExtracted(lang, texts) { seekAndPlay() }
-                                    }
-                                } else {
-                                    seekAndPlay()
-                                }
-                            },
-                            forceDark = viewModel.forceDarkWeb,
-                            textZoom = viewModel.textZoom,
-                            readerMode = viewModel.readerMode,
-                            followAlong = viewModel.followAlong
-                        )
-                    }
-                }
-                ReadingPositionSlider(
-                    totalSentences = viewModel.sentences.size,
-                    currentIndex = viewModel.currentHighlightIndex,
-                    onSeekChange = { idx ->
-                        // Live scroll the WebView to the sentence under the thumb.
-                        val text = viewModel.sentences.getOrNull(idx) ?: return@ReadingPositionSlider
-                        val escaped = JSONObject.quote(text)
-                        webView?.evaluateJavascript(
-                            "(function(){ window.find($escaped, false, false, true); })();",
-                            null
-                        )
+            if (viewModel.url.isNotEmpty()) {
+                WebViewContainer(
+                    url = viewModel.url,
+                    currentSentence = viewModel.currentSentenceText,
+                    onWebViewReady = { webView = it },
+                    onUrlChange = { viewModel.onPageUrlSettled(it) },
+                    onTitleChange = { pageUrl, title -> viewModel.onPageTitle(pageUrl, title) },
+                    onCanGoBackChanged = { canGoBack = it },
+                    onTextTapped = { clickedText ->
+                        val seekAndPlay = {
+                            // A tap that can't be matched to a sentence must NOT
+                            // fall back to sentence 0 — that would jump reading to
+                            // the top of the page instead of the tapped spot.
+                            val idx = viewModel.findSentenceIndex(clickedText)
+                            if (idx >= 0) {
+                                val args = Bundle().apply { putInt("startIndex", idx) }
+                                controller?.sendCustomCommand(
+                                    SessionCommand("playSentences", Bundle.EMPTY), args
+                                )
+                            }
+                        }
+                        if (viewModel.sentences.isEmpty()) {
+                            extractTexts(webView, viewModel.readerMode) { lang, texts ->
+                                viewModel.onTextsExtracted(lang, texts) { seekAndPlay() }
+                            }
+                        } else {
+                            seekAndPlay()
+                        }
                     },
-                    onSeekFinished = { idx ->
-                        // Commit: start playback from this position (TTS will
-                        // broadcast updateIndex which drives the indicator).
-                        val args = Bundle().apply { putInt("startIndex", idx) }
-                        controller?.sendCustomCommand(
-                            SessionCommand("playSentences", Bundle.EMPTY), args
-                        )
-                    },
-                    modifier = Modifier.width(20.dp).fillMaxHeight()
+                    forceDark = viewModel.forceDarkWeb,
+                    textZoom = viewModel.textZoom,
+                    readerMode = viewModel.readerMode,
+                    followAlong = viewModel.followAlong
                 )
             }
             if (viewModel.isLoading) CircularProgressIndicator(Modifier.align(Alignment.Center))

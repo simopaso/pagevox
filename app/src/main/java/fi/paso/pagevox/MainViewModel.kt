@@ -283,47 +283,37 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     fun getStartIndex(): Int =
         if (sentences.isNotEmpty()) PlaybackDataRepository.currentIndex else initialIndex
 
+    /** Map the tapped text (from [tapDetectionJs], which begins at the exact
+     *  tapped character and so is usually mid-sentence) to a sentence index.
+     *  Returns -1 when nothing matches — the caller must NOT fall back to 0. */
     fun findSentenceIndex(clickedText: String): Int {
         if (sentences.isEmpty()) return -1
 
         // Collapse all whitespace (incl. non-breaking spaces) to single spaces.
         fun normalize(s: String) = s.replace(Regex("\\s+"), " ").trim()
 
-        val normalizedClicked = normalize(clickedText)
-        if (normalizedClicked.isEmpty()) return -1
+        val clicked = normalize(clickedText)
+        if (clicked.isEmpty()) return -1
+        val normalizedSentences = sentences.map { normalize(it) }
 
-        // Must use the same splitter as extraction, or tap-to-sentence matching
-        // disagrees about where sentences begin.
-        val firstSentence = splitIntoSentences(clickedText.trim())
-            .firstOrNull()
-            ?.let { normalize(it) }
-            ?: normalizedClicked
-
-        // 1. Exact match on the first sentence of the tapped element.
-        val exact = sentences.indexOfFirst { normalize(it).equals(firstSentence, ignoreCase = true) }
-        if (exact >= 0) return exact
-
-        // 2. Tapped paragraph starts with one of our extracted sentences.
-        val startsWith = sentences.indexOfFirst { s ->
-            val n = normalize(s)
-            n.length >= 10 && normalizedClicked.startsWith(n, ignoreCase = true)
-        }
-        if (startsWith >= 0) return startsWith
-
-        // 3. First-sentence prefix match for minor differences.
-        val prefix = firstSentence.take(40)
-        if (prefix.length >= 10) {
-            val prefixMatch = sentences.indexOfFirst {
-                normalize(it).startsWith(prefix, ignoreCase = true)
-            }
-            if (prefixMatch >= 0) return prefixMatch
+        // Find the sentence the tap fell inside by locating the one that contains
+        // a leading probe of the tapped text. A longer probe is more unique; a
+        // shorter one still matches when the tap is near a sentence's end, where a
+        // long probe would spill past the boundary into the next sentence. Taking
+        // the first containing sentence (document order) keeps the earliest —
+        // hence the correct — match when a short probe is ambiguous.
+        for (probeLen in intArrayOf(48, 30, 18, 10)) {
+            if (clicked.length < probeLen) continue
+            val probe = clicked.substring(0, probeLen)
+            val hit = normalizedSentences.indexOfFirst { it.contains(probe, ignoreCase = true) }
+            if (hit >= 0) return hit
         }
 
-        // 4. Last resort: tapped text contains one of our sentences as a substring.
-        return sentences.indexOfFirst { s ->
-            val n = normalize(s)
-            n.length >= 15 && normalizedClicked.contains(n, ignoreCase = true)
-        }
+        // Tap text shorter than the smallest probe (near end of document): match
+        // on the whole thing, then on a sentence that starts with it.
+        val whole = normalizedSentences.indexOfFirst { it.contains(clicked, ignoreCase = true) }
+        if (whole >= 0) return whole
+        return normalizedSentences.indexOfFirst { it.startsWith(clicked.take(18), ignoreCase = true) }
     }
 }
 
