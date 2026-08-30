@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<!--
+  Swedish user manual. Translation of manual.html, which is the source of
+  truth — change that first, then bring the translations along.
+
+  Menu and button names here must match values-sv/strings.xml exactly, or the
+  instructions send the reader looking for wording that isn't on screen.
+
+  The lang attribute below is load-bearing: PageVox reads it to pick a matching
+  TTS voice, so this file is narrated by a Swedish voice automatically.
+-->
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>PageVox användarhandbok</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5a5a66;
+    --rule: #dcdce4;
+    --accent: #3d5afe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131316;
+      --fg: #e5e2e6;
+      --muted: #a9a6ae;
+      --rule: #34343c;
+      --accent: #b9c3ff;
+    }
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Roboto", sans-serif;
+    line-height: 1.65;
+    margin: 0 auto;
+    max-width: 44rem;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin: 0 0 0.25rem;
+  }
+  h2 {
+    border-top: 1px solid var(--rule);
+    font-size: 1.25rem;
+    line-height: 1.3;
+    margin: 2.25rem 0 0.5rem;
+    padding-top: 1.25rem;
+  }
+  p, li { font-size: 1.05rem; }
+  ul { padding-left: 1.35rem; }
+  li { margin: 0.4rem 0; }
+  .lead {
+    color: var(--muted);
+    font-size: 1.15rem;
+  }
+  .tip {
+    border-left: 3px solid var(--accent);
+    margin: 1.25rem 0;
+    padding: 0.1rem 0 0.1rem 1rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>PageVox användarhandbok</h1>
+
+<p class="lead">PageVox är en webbläsare som läser upp sidor högt. Öppna en sida, tryck på uppspelningsknappen, så läser din enhet texten medan du lyssnar — med skärmen på, med appen i bakgrunden eller med telefonen låst i fickan.</p>
+
+<h2>Prova direkt</h2>
+
+<p>Du läser den här handboken inuti PageVox, så du kan lika gärna lyssna på den. Tryck på den runda uppspelningsknappen längst ned på skärmen. Appen läser den här sidan uppifrån, markerar varje mening medan den läses och rullar med dig.</p>
+
+<p>Tryck på samma knapp igen för att pausa. Allt som beskrivs nedan kan du prova på den här sidan medan du går igenom den.</p>
+
+<h2>Öppna en sida</h2>
+
+<p>Fältet högst upp är adressfältet. Skriv en webbadress och tryck på gå-knappen på tangentbordet. Om det du skriver inte ser ut som en adress behandlar PageVox det som en webbsökning i stället.</p>
+
+<p>Medan du skriver föreslår PageVox sidor du har besökt tidigare och jämför med både adressen och sidans titel. Tryck på ett förslag för att gå direkt dit.</p>
+
+<p>Du kan också skicka sidor till PageVox från andra appar. Använd delningsknappen i din webbläsare, din nyhetsläsare eller din e-postapp och välj PageVox i listan. PageVox kan också ställas in som den app som öppnar webblänkar, så att en länk du trycker på var som helst på enheten öppnas här redo att läsas.</p>
+
+<h2>Läsa upp en sida</h2>
+
+<p>Den runda knappen längst ned i mitten startar och stoppar uppläsningen. Första gången du trycker på den på en ny sida hämtar PageVox texten ur sidan, delar upp den i meningar och börjar tala.</p>
+
+<p>Uppläsningen börjar normalt där du slutade. På en sida du aldrig har öppnat är det högst upp. På en sida du har läst tidigare är det den mening du stannade vid, även om det var för flera dagar sedan.</p>
+
+<div class="tip">
+<p>Om inget ljud hörs alls kanske din enhet ännu inte har någon talsyntes inställd. Se felsökningsavsnittet i slutet av den här handboken.</p>
+</div>
+
+<h2>Börja vid en viss mening</h2>
+
+<p>Tryck på vilken mening som helst på sidan så börjar PageVox läsa exakt där. Det fungerar både på vanliga webbsidor och i rena textfiler. Om du trycker på något som inte är läsbar text, till exempel en bild eller en tom marginal, händer ingenting och den nuvarande läspositionen lämnas orörd.</p>
+
+<p>Ovanför knapparna finns ett reglage som går över hela skärmens bredd. Dra i det för att förflytta dig genom sidan. Medan du drar visas den mening du skulle hamna på strax ovanför reglaget, och sidan rullar dit. Släpp så börjar uppläsningen från den meningen.</p>
+
+<p>Till höger om förhandsvisningen ser du vilken mening du är på och hur många det finns totalt.</p>
+
+<h2>Förflytta dig medan du lyssnar</h2>
+
+<p>De två pilknapparna på var sida om uppspelningsknappen hoppar en mening bakåt och framåt. Det är det snabbaste sättet att höra en mening igen.</p>
+
+<p>Håll in någon av dem för att hoppa ett helt avsnitt i stället. Ett avsnitt är en rubrik på sidan, så i en lång artikel flyttar detta dig från kapitel till kapitel. Telefonen vibrerar kort för att bekräfta den långa tryckningen.</p>
+
+<p>På sidor som har rubriker visas små markeringar längs reglaget där varje avsnitt börjar, och rubriken du befinner dig i visas ovanför meningsförhandsvisningen. När ett nytt avsnitt börjar gör PageVox en kort paus innan rubriken läses, så att den låter som ett kapitelbyte i stället för ännu ett stycke.</p>
+
+<h2>Lyssna i bakgrunden</h2>
+
+<p>Uppläsningen fortsätter när du lämnar appen eller stänger av skärmen. En avisering visas med knappar för uppspelning, paus och hopp, och samma kontroller dyker upp på låsskärmen. Förloppsindikatorn där följer din position i sidan.</p>
+
+<p>Du kan dra i den förloppsindikatorn för att förflytta dig genom sidan utan att låsa upp telefonen. Din position sparas löpande, så även om telefonen ligger pausad i fickan i en timme fortsätter uppläsningen från rätt mening.</p>
+
+<h2>Uppläsningshastighet och röst</h2>
+
+<p>Öppna menyn längst ned till höger, knappen med tre punkter. Under Uppläsningshastighet kan du välja mellan en långsam inställning på 0,8 gånger normal hastighet och dubbel hastighet. Ändringen träder i kraft vid nästa mening, utan att avbryta det som läses.</p>
+
+<p>PageVox använder den talröst din enhet är inställd på. Om en sida anger att den är skriven på ett annat språk byter PageVox automatiskt till en röst för det språket och byter sedan tillbaka.</p>
+
+<p>Om du hellre vill välja en bestämd röst för allt öppnar du Inställningar i samma meny och väljer den under Uppläsningsröst. En röst som väljs här används alltid, oavsett vilket språk sidan är på. Välj Systemets standard för att återgå till automatiskt beteende.</p>
+
+<h2>Följa med på skärmen</h2>
+
+<p>Under uppläsningen markeras den aktuella meningen på sidan och rullas in i vy, som karaoke. Det gör det lätt att läsa med, eller att titta ned och se hur långt rösten har kommit.</p>
+
+<p>Om du hellre vill lyssna utan att sidan rör sig stänger du av Följ med i menyn. Uppläsningen fortsätter precis som förut, bara utan markering och rullning.</p>
+
+<h2>Läsläge</h2>
+
+<p>Många webbsidor är inlindade i menyer, annonser och sidfötter, och att läsa upp allt det är tröttsamt. Slå på Läsläge i menyn så begränsar PageVox sidan till själva artikeln, både på skärmen och i det som läses.</p>
+
+<p>Att slå på eller av Läsläge hämtar sidtexten på nytt, så uppläsningen stannar och du trycker på uppspelning igen för att börja med den nya inställningen.</p>
+
+<h2>Göra sidan lättare att läsa</h2>
+
+<p>Menyn har en textstorlekskontroll med en minus- och en plusknapp. Storleken sparas och gäller för alla sidor.</p>
+
+<p>I Inställningar kan du också slå på mörkt läge för webbsidor. Det ger ett mörkt utseende åt webbplatser som inte erbjuder ett eget, inklusive rena textfiler.</p>
+
+<h2>Bokmärken, historik och att fortsätta där du slutade</h2>
+
+<p>Stjärnan till höger i adressfältet sparar den aktuella sidan som ett bokmärke. Tryck igen för att ta bort bokmärket.</p>
+
+<p>Välj Bokmärken och historik i menyn för att öppna ditt bibliotek. Det har tre flikar. Fortsätt listar de sidor du har påbörjat men inte läst klart, med hur långt du har kommit och ungefär hur mycket som återstår vid din nuvarande uppläsningshastighet. Bokmärken listar de sidor du har sparat. Historik listar de senaste sidorna, nyast först, och har en knapp för att rensa den.</p>
+
+<p>Tryck på vilken sida som helst i biblioteket för att öppna den. Den fortsätter vid den mening du stannade på.</p>
+
+<h2>Logga in på webbplatser</h2>
+
+<p>PageVox håller dig inloggad på samma sätt som vilken webbläsare som helst. Logga in en gång så kommer webbplatsen ihåg dig, även efter att du har stängt appen.</p>
+
+<p>Vissa webbplatser lägger sin inloggningsknapp bakom ett litet popup-fönster. PageVox har inga flikar, så det gör om sådana popup-fönster till ett vanligt sidbyte i samma fönster och tar dig tillbaka till webbplatsen efteråt.</p>
+
+<p>Några sidor skyddas av själva webbservern i stället för av ett inloggningsformulär. De frågar efter användarnamn och lösenord i en liten ruta innan sidan visas. PageVox erbjuder sig att komma ihåg det du skriver, så en skyddad webbplats frågar bara en gång.</p>
+
+<p>Vissa inloggningstjänster, däribland Google, vägrar att ta emot inloggningar inifrån en annan apps webbläsare. Det är deras beslut och ingen webbläsare byggd på det här sättet kan kringgå det. Om en tjänst avvisar inloggningen, använd webbplatsens eget användarnamn och lösenord om ett sådant erbjuds.</p>
+
+<p>För att logga ut från allt på en gång öppnar du Inställningar och väljer Rensa cookies och logga ut. Dina bokmärken, din historik och dina läspositioner behålls.</p>
+
+<h2>Din startsida</h2>
+
+<p>Menyn har en Startsida-post som tar dig till din startsida. Tills du väljer en egen är den startsidan den här handboken.</p>
+
+<p>För att ställa in en egen öppnar du Inställningar i menyn, skriver en adress i fältet Startsidans adress och trycker på Spara. Om du någon gång vill ha tillbaka handboken som startsida, töm fältet och spara det tomt.</p>
+
+<p>Menyn har också posten Upp en nivå, som tar bort den sista delen av den aktuella webbadressen. Det är praktiskt för att ta sig uppåt ur en filmapp.</p>
+
+<h2>Hitta tillbaka till den här handboken</h2>
+
+<p>Vad du än ställer in som startsida är den här handboken alltid ett tryck bort. Öppna menyn med de tre punkterna och välj Användarhandbok.</p>
+
+<h2>Om något inte fungerar</h2>
+
+<p>Om det inte hörs något ljud alls när du trycker på uppspelning kanske din enhet saknar installerad eller inställd talsyntes. Välj Inställningar för talsyntes i menyn för att öppna Androids inställningar för text till tal, där du kan installera en röst, välja motor och testa den. På de flesta enheter finns dessa inställningar även under Tillgänglighet.</p>
+
+<p>Om bara en del av en sida läses upp är resten förmodligen inte vanlig text. PageVox läser stycken, rubriker, listpunkter och förformaterad text. Text som är inritad i bilder kan inte läsas.</p>
+
+<p>Om det inte händer något när du trycker på en mening träffade tryckningen inte text som PageVox känner igen. Prova att trycka mitt på en rad i stället för allra längst ut vid skärmkanten, eller använd reglaget.</p>
+
+<p>Om en sida läses på fel språk eller med fel brytning kan sidan ange fel språk. Välj en bestämd röst i Inställningar för att åsidosätta det.</p>
+
+<h2>Dina uppgifter</h2>
+
+<p>Din historik, dina bokmärken, dina läspositioner och dina inställningar lagras på den här enheten, liksom de cookies som håller dig inloggad på webbplatser. Inställningar innehåller också en länk till integritetspolicyn och till licenserna för den öppna programvara som PageVox är byggd med.</p>
+
+<h2>Om</h2>
+
+<p>PageVox är ett projekt med öppen källkod som ges ut under Apache License version 2.0. Tack för att du använder det.</p>
+
+<p>Appen är gratis och kommer alltid att vara det. Ingenting ligger bakom en betalning och det finns inga annonser. Om du ändå vill stödja arbetet finns posten Stöd utvecklingen i menyn, som öppnar en betalsida i din vanliga webbläsare. Den är helt frivillig och låser inte upp någonting.</p>
+
+</main>
+</body>
+</html>

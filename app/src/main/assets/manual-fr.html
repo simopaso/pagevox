@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<!--
+  French user manual. Translation of manual.html, which is the source of
+  truth — change that first, then bring the translations along.
+
+  Menu and button names here must match values-fr/strings.xml exactly, or the
+  instructions send the reader looking for wording that isn't on screen. Uses
+  the formal "vous" throughout, like the French UI strings.
+
+  The lang attribute below is load-bearing: PageVox reads it to pick a matching
+  TTS voice, so this file is narrated by a French voice automatically.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Manuel d'utilisation de PageVox</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5a5a66;
+    --rule: #dcdce4;
+    --accent: #3d5afe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131316;
+      --fg: #e5e2e6;
+      --muted: #a9a6ae;
+      --rule: #34343c;
+      --accent: #b9c3ff;
+    }
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Roboto", sans-serif;
+    line-height: 1.65;
+    margin: 0 auto;
+    max-width: 44rem;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin: 0 0 0.25rem;
+  }
+  h2 {
+    border-top: 1px solid var(--rule);
+    font-size: 1.25rem;
+    line-height: 1.3;
+    margin: 2.25rem 0 0.5rem;
+    padding-top: 1.25rem;
+  }
+  p, li { font-size: 1.05rem; }
+  ul { padding-left: 1.35rem; }
+  li { margin: 0.4rem 0; }
+  .lead {
+    color: var(--muted);
+    font-size: 1.15rem;
+  }
+  .tip {
+    border-left: 3px solid var(--accent);
+    margin: 1.25rem 0;
+    padding: 0.1rem 0 0.1rem 1rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Manuel d'utilisation de PageVox</h1>
+
+<p class="lead">PageVox est un navigateur web qui lit les pages à voix haute. Ouvrez une page, appuyez sur lecture, et votre appareil prononce le texte pendant que vous écoutez — écran allumé, application en arrière-plan, ou téléphone verrouillé dans votre poche.</p>
+
+<h2>Essayez tout de suite</h2>
+
+<p>Vous lisez ce manuel dans PageVox, vous pouvez donc tout aussi bien l'écouter. Appuyez sur le bouton rond de lecture en bas de l'écran. L'application lit cette page depuis le début, met en évidence chaque phrase au fur et à mesure et fait défiler la page avec vous.</p>
+
+<p>Appuyez de nouveau sur le même bouton pour mettre en pause. Tout ce qui est décrit ci-dessous peut être essayé sur cette page au fil de votre lecture.</p>
+
+<h2>Ouvrir une page</h2>
+
+<p>La barre en haut de l'écran est la barre d'adresse. Saisissez une adresse web et appuyez sur la touche de validation du clavier. Si ce que vous saisissez ne ressemble pas à une adresse, PageVox le traite comme une recherche web.</p>
+
+<p>Pendant que vous tapez, PageVox suggère des pages déjà visitées, en comparant à la fois l'adresse et le titre de la page. Touchez une suggestion pour y accéder directement.</p>
+
+<p>Vous pouvez aussi envoyer des pages à PageVox depuis d'autres applications. Utilisez le bouton de partage de votre navigateur, de votre lecteur d'actualités ou de votre application de messagerie, puis choisissez PageVox dans la liste. PageVox peut également être défini comme l'application qui ouvre les liens web, de sorte qu'un lien touché n'importe où sur l'appareil s'ouvre ici, prêt à être lu.</p>
+
+<h2>Faire lire une page à voix haute</h2>
+
+<p>Le bouton rond en bas au centre démarre et arrête la lecture. La première fois que vous appuyez dessus sur une nouvelle page, PageVox extrait le texte de la page, le découpe en phrases et commence à parler.</p>
+
+<p>La lecture reprend normalement là où vous vous étiez arrêté. Sur une page jamais ouverte, c'est le début. Sur une page déjà lue, c'est la phrase où vous vous étiez arrêté, même si cela remonte à plusieurs jours.</p>
+
+<div class="tip">
+<p>Si aucun son ne sort, votre appareil n'a peut-être pas encore de synthèse vocale configurée. Consultez la section de dépannage à la fin de ce manuel.</p>
+</div>
+
+<h2>Commencer à une phrase précise</h2>
+
+<p>Touchez n'importe quelle phrase de la page et PageVox commence la lecture exactement à cet endroit. Cela fonctionne aussi bien sur les pages web ordinaires que sur les fichiers en texte brut. Si vous touchez autre chose que du texte lisible, une image ou une marge vide par exemple, rien ne se passe et la position de lecture actuelle reste inchangée.</p>
+
+<p>Au-dessus des boutons se trouve un curseur occupant toute la largeur de l'écran. Faites-le glisser pour vous déplacer dans la page. Pendant le glissement, la phrase sur laquelle vous arriveriez s'affiche juste au-dessus du curseur et la page défile jusqu'à elle. Relâchez et la lecture démarre à cette phrase.</p>
+
+<p>À droite de l'aperçu, vous voyez à quelle phrase vous êtes et combien il y en a au total.</p>
+
+<h2>Se déplacer en écoutant</h2>
+
+<p>Les deux boutons fléchés de part et d'autre du bouton de lecture reculent et avancent d'une phrase. C'est le moyen le plus rapide de réécouter une phrase.</p>
+
+<p>Maintenez l'un ou l'autre enfoncé pour sauter une section entière. Une section correspond à un titre de la page : dans un article long, cela vous déplace donc de chapitre en chapitre. Le téléphone vibre brièvement pour confirmer l'appui long.</p>
+
+<p>Sur les pages comportant des titres, de petits repères apparaissent le long du curseur à l'endroit où commence chaque section, et le titre de la section où vous vous trouvez s'affiche au-dessus de l'aperçu de la phrase. Au début d'une nouvelle section, PageVox marque une courte pause avant de lire le titre, pour que cela sonne comme un changement de chapitre plutôt que comme un paragraphe de plus.</p>
+
+<h2>Écouter en arrière-plan</h2>
+
+<p>La lecture continue lorsque vous quittez l'application ou éteignez l'écran. Une notification apparaît avec les commandes de lecture, de pause et de saut, et les mêmes commandes s'affichent sur l'écran de verrouillage. La barre de progression y suit votre position dans la page.</p>
+
+<p>Vous pouvez faire glisser cette barre de progression pour vous déplacer dans la page sans déverrouiller le téléphone. Votre position est enregistrée en continu : même si le téléphone reste en pause dans votre poche pendant une heure, la lecture reprend à la bonne phrase.</p>
+
+<h2>Vitesse et voix de lecture</h2>
+
+<p>Ouvrez le menu en bas à droite, le bouton à trois points. Sous Vitesse de lecture, vous pouvez choisir entre un réglage lent à 0,8 fois la vitesse normale et la vitesse double. Le changement prend effet à la phrase suivante, sans interrompre la lecture en cours.</p>
+
+<p>PageVox utilise la voix configurée sur votre appareil. Si une page déclare être rédigée dans une autre langue, PageVox bascule automatiquement vers une voix de cette langue, puis revient ensuite.</p>
+
+<p>Pour choisir une voix précise pour tout, ouvrez Paramètres dans le même menu et sélectionnez-la sous Voix de lecture. Une voix choisie ici est toujours utilisée, quelle que soit la langue de la page. Choisissez Valeur par défaut du système pour revenir au comportement automatique.</p>
+
+<h2>Suivre la lecture à l'écran</h2>
+
+<p>Pendant la lecture, la phrase en cours est mise en évidence sur la page et amenée à l'écran, à la manière d'un karaoké. Il est ainsi facile de lire en même temps, ou de jeter un œil pour voir où la voix en est.</p>
+
+<p>Si vous préférez écouter sans que la page bouge, désactivez Suivi de lecture dans le menu. La lecture se poursuit exactement comme avant, simplement sans la mise en évidence ni le défilement.</p>
+
+<h2>Mode lecture</h2>
+
+<p>Beaucoup de pages web sont entourées de menus, de publicités et de pieds de page, et se faire lire tout cela est fastidieux. Activez le Mode lecture dans le menu et PageVox réduit la page à l'article lui-même, à l'écran comme dans ce qu'il lit.</p>
+
+<p>Activer ou désactiver le Mode lecture réextrait le texte de la page : la lecture s'arrête donc et vous appuyez de nouveau sur lecture pour repartir avec le nouveau réglage.</p>
+
+<h2>Rendre la page plus lisible</h2>
+
+<p>Le menu comporte un réglage de la taille du texte avec un bouton moins et un bouton plus. La taille est mémorisée et s'applique à toutes les pages.</p>
+
+<p>Dans les Paramètres, vous pouvez aussi activer le mode sombre pour les pages web. Il donne une apparence sombre aux sites qui n'en proposent pas, y compris aux fichiers en texte brut.</p>
+
+<h2>Favoris, historique et reprise de lecture</h2>
+
+<p>L'étoile à droite de la barre d'adresse enregistre la page actuelle en favori. Touchez-la de nouveau pour retirer le favori.</p>
+
+<p>Choisissez Favoris et historique dans le menu pour ouvrir votre bibliothèque. Elle comporte trois onglets. Reprendre liste les pages que vous avez commencées sans les terminer, avec votre progression et une estimation du temps restant à votre vitesse de lecture actuelle. Favoris liste les pages que vous avez enregistrées. Historique liste les pages récentes, les plus récentes en premier, avec un bouton pour l'effacer.</p>
+
+<p>Touchez n'importe quelle page de la bibliothèque pour l'ouvrir. Elle reprend à la phrase où vous vous étiez arrêté.</p>
+
+<h2>Se connecter à des sites web</h2>
+
+<p>PageVox vous garde connecté comme n'importe quel navigateur. Connectez-vous une fois et le site se souvient de vous, y compris après la fermeture de l'application.</p>
+
+<p>Certains sites placent leur bouton de connexion derrière une petite fenêtre surgissante. PageVox n'a pas d'onglets : il transforme donc ces fenêtres en un changement de page ordinaire dans la même fenêtre, puis vous ramène au site.</p>
+
+<p>Quelques pages sont protégées par le serveur web lui-même plutôt que par un formulaire de connexion. Elles demandent un nom d'utilisateur et un mot de passe dans une petite boîte avant d'afficher la page. PageVox propose de retenir ce que vous saisissez, de sorte qu'un site protégé ne le demande qu'une fois.</p>
+
+<p>Certains fournisseurs de connexion, dont Google, refusent les connexions effectuées depuis le navigateur d'une autre application. C'est leur décision et aucun navigateur conçu de cette façon ne peut la contourner. Si un fournisseur refuse la connexion, utilisez le nom d'utilisateur et le mot de passe propres au site s'il en propose.</p>
+
+<p>Pour vous déconnecter de tout d'un coup, ouvrez les Paramètres et choisissez Effacer les cookies et se déconnecter. Vos favoris, votre historique et vos positions de lecture sont conservés.</p>
+
+<h2>Votre page d'accueil</h2>
+
+<p>Le menu comporte une entrée Page d'accueil qui vous y ramène. Tant que vous n'en choisissez pas une, cette page d'accueil est ce manuel.</p>
+
+<p>Pour définir la vôtre, ouvrez Paramètres dans le menu, saisissez une adresse dans le champ Adresse de la page d'accueil, puis appuyez sur Enregistrer. Si vous souhaitez un jour retrouver le manuel comme page d'accueil, videz ce champ et enregistrez-le vide.</p>
+
+<p>Le menu comporte aussi l'entrée Remonter d'un niveau, qui supprime la dernière partie de l'adresse web actuelle. C'est utile pour remonter depuis un dossier de fichiers.</p>
+
+<h2>Retrouver ce manuel</h2>
+
+<p>Quelle que soit la page d'accueil que vous définissez, ce manuel reste à un appui de distance. Ouvrez le menu à trois points et choisissez Manuel d'utilisation.</p>
+
+<h2>Si quelque chose ne fonctionne pas</h2>
+
+<p>Si appuyer sur lecture ne produit aucun son, votre appareil n'a peut-être pas de moteur de synthèse vocale installé ou configuré. Choisissez Paramètres de synthèse vocale dans le menu pour ouvrir les réglages Android de synthèse vocale, où vous pouvez installer une voix, choisir un moteur et le tester. Sur la plupart des appareils, ces réglages se trouvent aussi sous Accessibilité.</p>
+
+<p>Si seule une partie d'une page est lue, le reste n'est probablement pas du texte ordinaire. PageVox lit les paragraphes, les titres, les éléments de liste et le texte préformaté. Le texte dessiné dans des images ne peut pas être lu.</p>
+
+<p>Si toucher une phrase ne fait rien, l'appui n'a pas atteint du texte que PageVox reconnaît. Essayez de toucher au milieu d'une ligne plutôt qu'au bord de l'écran, ou utilisez le curseur.</p>
+
+<p>Si une page est lue dans la mauvaise langue ou avec le mauvais accent, il se peut que la page déclare une langue erronée. Choisissez une voix précise dans les Paramètres pour passer outre.</p>
+
+<h2>Vos données</h2>
+
+<p>Votre historique, vos favoris, vos positions de lecture et vos paramètres sont stockés sur cet appareil, tout comme les cookies qui vous gardent connecté aux sites web. Les Paramètres contiennent également un lien vers la politique de confidentialité et vers les licences des logiciels open source avec lesquels PageVox est construit.</p>
+
+<h2>À propos</h2>
+
+<p>PageVox est un projet open source publié sous la licence Apache, version 2.0. Merci de l'utiliser.</p>
+
+<p>L'application est gratuite et le restera. Rien n'est derrière un paiement et il n'y a pas de publicité. Si vous souhaitez néanmoins soutenir ce travail, le menu comporte une entrée Soutenir le développement qui ouvre une page de paiement dans votre navigateur habituel. Elle est entièrement facultative et ne débloque rien.</p>
+
+</main>
+</body>
+</html>

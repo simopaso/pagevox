@@ -29,11 +29,15 @@ fun resolveAddressBarInput(input: String): String {
  *   https://site.com/a/b/file.txt -> https://site.com/a/b/
  *   https://site.com/a/b/         -> https://site.com/a/
  *   https://site.com/a/           -> https://site.com/
- * Returns null when already at the site root (nothing to go up to).
+ * Returns null when already at the site root (nothing to go up to), and for
+ * anything that isn't a web page: going "up" from the bundled manual at
+ * file:///android_asset/manual.html would land on a directory the WebView
+ * can't render, leaving the user staring at an error page.
  */
 fun parentFolderUrl(rawUrl: String): String? {
     val uri = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return null
-    val scheme = uri.scheme ?: return null
+    val scheme = uri.scheme?.lowercase() ?: return null
+    if (scheme != "http" && scheme != "https") return null
     val authority = uri.authority ?: ""
     // Strip a trailing slash so the final segment can be removed uniformly.
     val path = (uri.path ?: "").removeSuffix("/")

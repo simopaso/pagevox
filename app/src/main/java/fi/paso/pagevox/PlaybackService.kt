@@ -34,6 +34,14 @@ import java.util.UUID
 
 private const val TAG = "PlaybackService"
 
+// A short silence spoken before the first sentence of a section, so a heading
+// lands as a chapter break instead of running straight out of the previous
+// paragraph. It is queued as its own utterance, hence the id prefix: the
+// progress listener must ignore it, or the silence's onDone would advance the
+// sentence index and skip the heading it was meant to introduce.
+private const val SECTION_PAUSE_MS = 400L
+private const val SILENCE_UTTERANCE_PREFIX = "gap-"
+
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
@@ -180,6 +188,7 @@ class PlaybackService : MediaSessionService() {
     private fun setupTtsListeners() {
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
+                if (utteranceId.isSectionGap()) return
                 mainHandler.post {
                     // Seek the silent track to this sentence's predicted start so
                     // the notification's progress bar advances per sentence.
@@ -191,6 +200,9 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onDone(utteranceId: String?) {
+                // The section gap is part of the *current* sentence's playback,
+                // not a finished sentence — advancing here would skip a heading.
+                if (utteranceId.isSectionGap()) return
                 mainHandler.post {
                     currentSentenceIndex++
                     if (player.playWhenReady) speakNextSentence()
@@ -198,11 +210,14 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onError(utteranceId: String?) {
+                if (utteranceId.isSectionGap()) return
                 Log.e(TAG, "TTS error on: $utteranceId")
                 mainHandler.post { player.playWhenReady = false }
             }
         })
     }
+
+    private fun String?.isSectionGap() = this?.startsWith(SILENCE_UTTERANCE_PREFIX) == true
 
     /**
      * Pick a TTS voice for the loaded page. The user's system-selected voice is
@@ -330,7 +345,13 @@ class PlaybackService : MediaSessionService() {
         // no pageUrl to write to disk against.
         PlaybackDataRepository.currentIndex = currentSentenceIndex
         val url = PlaybackDataRepository.pageUrl ?: return
-        serviceScope.launch { settingsRepo.updateReadingPosition(url, currentSentenceIndex) }
+        // Carried along so the library can show progress and time-left for this
+        // page later, without loading and re-extracting it.
+        val total = PlaybackDataRepository.sentences.size
+        val remainingMs = PlaybackDataRepository.baseRemainingMsFrom(currentSentenceIndex)
+        serviceScope.launch {
+            settingsRepo.updateReadingPosition(url, currentSentenceIndex, total, remainingMs)
+        }
     }
 
     /**
@@ -372,7 +393,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun speakNextSentence() {
-        val sentence = PlaybackDataRepository.getSentence(currentSentenceIndex)
+        // Speak the narration-cleaned form of the sentence (citation markers
+        // stripped, URLs shortened, abbreviations expanded); the verbatim text
+        // stays in the repository for the UI and the follow-along highlight.
+        val sentence = PlaybackDataRepository.getSpokenSentence(currentSentenceIndex)
         if (sentence != null) {
             // Re-evaluate voice/language so a mid-session voice change (or revert
             // to default) applies at this sentence boundary; memoized, so cheap.
@@ -381,7 +405,20 @@ class PlaybackService : MediaSessionService() {
             // to take the whole process down. Treat as a soft stop instead.
             try {
                 tts.setSpeechRate(PlaybackDataRepository.speechRate)
-                tts.speak(sentence, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+                // A heading gets a beat of silence in front of it. The gap is
+                // flushed in first and the sentence appended after it, so the
+                // pair plays as one uninterrupted unit.
+                val opensSection = currentSentenceIndex > 0 &&
+                    PlaybackDataRepository.isSectionStart(currentSentenceIndex)
+                if (opensSection) {
+                    tts.playSilentUtterance(
+                        SECTION_PAUSE_MS,
+                        TextToSpeech.QUEUE_FLUSH,
+                        SILENCE_UTTERANCE_PREFIX + UUID.randomUUID()
+                    )
+                }
+                val queueMode = if (opensSection) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH
+                tts.speak(sentence, queueMode, null, UUID.randomUUID().toString())
             } catch (e: Exception) {
                 Log.e(TAG, "tts.speak() failed", e)
                 player.playWhenReady = false
@@ -408,6 +445,26 @@ class PlaybackService : MediaSessionService() {
         val count = PlaybackDataRepository.sentences.size
         if (count == 0) return
         val target = (currentSentenceIndex + delta).coerceIn(0, count - 1)
+        startPlayback(target)
+    }
+
+    /** Jump to the next/previous page section (heading). Going back before the
+     *  first heading lands on the top of the page rather than doing nothing —
+     *  the text ahead of a page's first heading is real content. Skipping past
+     *  the last section is a no-op: there is nothing after it to jump to. */
+    private fun skipSection(forward: Boolean) {
+        if (PlaybackDataRepository.sentences.isEmpty()) return
+        if (PlaybackDataRepository.sectionStarts.isEmpty()) {
+            // No headings on this page — fall back to a plain sentence skip so
+            // the gesture never feels dead.
+            skipSentences(if (forward) 1 else -1)
+            return
+        }
+        val target = if (forward) {
+            PlaybackDataRepository.nextSectionStart(currentSentenceIndex) ?: return
+        } else {
+            PlaybackDataRepository.previousSectionStart(currentSentenceIndex) ?: 0
+        }
         startPlayback(target)
     }
 
@@ -458,6 +515,8 @@ class PlaybackService : MediaSessionService() {
                 .add(SessionCommand("stopPlayback",  Bundle.EMPTY))
                 .add(SessionCommand("skipNext",      Bundle.EMPTY))
                 .add(SessionCommand("skipPrevious",  Bundle.EMPTY))
+                .add(SessionCommand("skipNextSection",     Bundle.EMPTY))
+                .add(SessionCommand("skipPreviousSection", Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(sessionCommands)
@@ -490,6 +549,8 @@ class PlaybackService : MediaSessionService() {
                 "stopPlayback"  -> mainHandler.post { stopPlayback() }
                 "skipNext"      -> mainHandler.post { skipSentences(1) }
                 "skipPrevious"  -> mainHandler.post { skipSentences(-1) }
+                "skipNextSection"     -> mainHandler.post { skipSection(forward = true) }
+                "skipPreviousSection" -> mainHandler.post { skipSection(forward = false) }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<!--
+  Finnish user manual. Translation of manual.html, which is the source of
+  truth — change that first, then bring the translations along.
+
+  Menu and button names here must match values-fi/strings.xml exactly, or the
+  instructions send the reader looking for wording that isn't on screen.
+
+  The lang attribute below is load-bearing: PageVox reads it to pick a matching
+  TTS voice, so this file is narrated by a Finnish voice automatically.
+-->
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>PageVoxin käyttöohje</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5a5a66;
+    --rule: #dcdce4;
+    --accent: #3d5afe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131316;
+      --fg: #e5e2e6;
+      --muted: #a9a6ae;
+      --rule: #34343c;
+      --accent: #b9c3ff;
+    }
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Roboto", sans-serif;
+    line-height: 1.65;
+    margin: 0 auto;
+    max-width: 44rem;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin: 0 0 0.25rem;
+  }
+  h2 {
+    border-top: 1px solid var(--rule);
+    font-size: 1.25rem;
+    line-height: 1.3;
+    margin: 2.25rem 0 0.5rem;
+    padding-top: 1.25rem;
+  }
+  p, li { font-size: 1.05rem; }
+  ul { padding-left: 1.35rem; }
+  li { margin: 0.4rem 0; }
+  .lead {
+    color: var(--muted);
+    font-size: 1.15rem;
+  }
+  .tip {
+    border-left: 3px solid var(--accent);
+    margin: 1.25rem 0;
+    padding: 0.1rem 0 0.1rem 1rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>PageVoxin käyttöohje</h1>
+
+<p class="lead">PageVox on selain, joka lukee verkkosivut ääneen. Avaa sivu, paina toistopainiketta, ja laite lukee tekstin sinulle — näyttö auki, sovellus taustalla tai puhelin lukittuna taskussa.</p>
+
+<h2>Kokeile heti</h2>
+
+<p>Luet tätä ohjetta PageVoxissa, joten voit yhtä hyvin kuunnella sen. Paina näytön alareunassa olevaa pyöreää toistopainiketta. Sovellus lukee tämän sivun alusta alkaen, korostaa kunkin virkkeen sitä mukaa kuin se luetaan ja vierittää sivua mukanasi.</p>
+
+<p>Painamalla samaa painiketta uudelleen luku keskeytyy. Voit kokeilla kaikkea alla kuvattua tällä sivulla edetessäsi.</p>
+
+<h2>Sivun avaaminen</h2>
+
+<p>Näytön yläreunassa oleva palkki on osoiterivi. Kirjoita verkko-osoite ja paina näppäimistön siirtymispainiketta. Jos kirjoittamasi teksti ei näytä osoitteelta, PageVox tulkitsee sen hakusanaksi.</p>
+
+<p>Kirjoittaessasi PageVox ehdottaa aiemmin avaamiasi sivuja ja vertaa kirjoittamaasi sekä osoitteeseen että sivun otsikkoon. Napauta ehdotusta siirtyäksesi suoraan sinne.</p>
+
+<p>Voit myös lähettää sivuja PageVoxiin muista sovelluksista. Käytä selaimen, uutissovelluksen tai sähköpostin jakopainiketta ja valitse listalta PageVox. PageVoxin voi myös asettaa sovellukseksi, joka avaa verkkolinkit, jolloin mistä tahansa napautettu linkki avautuu tänne valmiina luettavaksi.</p>
+
+<h2>Sivun lukeminen ääneen</h2>
+
+<p>Alareunan keskellä oleva pyöreä painike aloittaa ja pysäyttää lukemisen. Kun painat sitä ensimmäisen kerran uudella sivulla, PageVox poimii sivulta tekstin, jakaa sen virkkeisiin ja alkaa puhua.</p>
+
+<p>Luku jatkuu yleensä siitä, mihin jäit. Sivulla, jota et ole koskaan avannut, se tarkoittaa sivun alkua. Aiemmin lukemallasi sivulla se on virke, johon lopetit, vaikka siitä olisi päiviä.</p>
+
+<div class="tip">
+<p>Jos mitään ääntä ei kuulu, laitteessasi ei ehkä ole vielä puhesynteesiä käytössä. Katso ohjeen lopussa oleva vianmääritysosio.</p>
+</div>
+
+<h2>Aloittaminen tietystä virkkeestä</h2>
+
+<p>Napauta mitä tahansa virkettä sivulla, niin PageVox alkaa lukea juuri siitä kohdasta. Tämä toimii sekä tavallisilla verkkosivuilla että pelkkää tekstiä sisältävissä tiedostoissa. Jos napautat jotain muuta kuin luettavaa tekstiä, esimerkiksi kuvaa tai tyhjää reunaa, mitään ei tapahdu eikä lukukohta muutu.</p>
+
+<p>Painikkeiden yläpuolella on koko näytön levyinen liukusäädin. Vedä sitä siirtyäksesi sivulla eteen- tai taaksepäin. Vedon aikana virke, johon olisit siirtymässä, näkyy säätimen yläpuolella ja sivu vierittyy näyttämään sen. Kun irrotat otteen, luku alkaa kyseisestä virkkeestä.</p>
+
+<p>Esikatselun oikealla puolella näkyy, monennessako virkkeessä olet ja kuinka monta niitä on kaikkiaan.</p>
+
+<h2>Liikkuminen kuuntelun aikana</h2>
+
+<p>Toistopainikkeen molemmin puolin olevat nuolipainikkeet siirtyvät virke kerrallaan taakse- ja eteenpäin. Se on nopein tapa kuulla virke uudelleen.</p>
+
+<p>Pitämällä jompaakumpaa painiketta pohjassa siirryt kokonaisen osion verran. Osio tarkoittaa sivun otsikkoa, joten pitkässä artikkelissa tämä siirtää sinut luvusta toiseen. Puhelin värähtää lyhyesti merkiksi siitä, että pitkä painallus tunnistettiin.</p>
+
+<p>Sivuilla, joissa on otsikoita, liukusäätimessä näkyy pienet merkit kunkin osion alkukohdassa, ja osion otsikko näytetään virke-esikatselun yläpuolella. Uuden osion alkaessa PageVox pitää lyhyen tauon ennen otsikon lukemista, jolloin se kuulostaa luvun vaihtumiselta eikä uudelta kappaleelta.</p>
+
+<h2>Kuuntelu taustalla</h2>
+
+<p>Luku jatkuu, kun poistut sovelluksesta tai sammutat näytön. Ilmoitusalueelle ilmestyy toisto-, tauko- ja siirtymispainikkeet, ja samat painikkeet näkyvät lukitusnäytöllä. Siellä oleva edistymispalkki seuraa kohtaasi sivulla.</p>
+
+<p>Voit vetää edistymispalkkia siirtyäksesi sivulla avaamatta lukitusta. Kohtasi tallennetaan jatkuvasti, joten vaikka puhelin olisi tauolla taskussasi tunnin, luku jatkuu oikeasta virkkeestä.</p>
+
+<h2>Lukunopeus ja ääni</h2>
+
+<p>Avaa oikeassa alakulmassa oleva kolmen pisteen valikko. Kohdassa Lukunopeus voit valita hitaan 0,8-kertaisen nopeuden ja kaksinkertaisen nopeuden väliltä. Muutos astuu voimaan seuraavassa virkkeessä keskeyttämättä luettavaa.</p>
+
+<p>PageVox käyttää laitteeseesi määritettyä puheääntä. Jos sivu ilmoittaa olevansa kirjoitettu jollain muulla kielellä, PageVox vaihtaa automaattisesti kyseisen kielen ääneen ja palaa sitten takaisin.</p>
+
+<p>Jos haluat valita yhden tietyn äänen kaikkeen lukemiseen, avaa samasta valikosta Asetukset ja valitse ääni kohdasta Lukuääni. Tässä valittua ääntä käytetään aina riippumatta sivun kielestä. Valitsemalla Järjestelmän oletus palaat automaattiseen toimintaan.</p>
+
+<h2>Lukemisen seuraaminen näytöllä</h2>
+
+<p>Luvun aikana luettava virke korostetaan sivulla ja vieritetään näkyviin karaoken tapaan. Näin on helppo lukea mukana tai vilkaista, mihin kohtaan ääni on edennyt.</p>
+
+<p>Jos haluat mieluummin kuunnella ilman että sivu liikkuu, poista valikosta käytöstä Seuraa lukemista. Luku jatkuu täsmälleen kuten ennenkin, vain ilman korostusta ja vieritystä.</p>
+
+<h2>Lukutila</h2>
+
+<p>Monet verkkosivut ovat valikoiden, mainosten ja alatunnisteiden ympäröimiä, ja kaiken sen lukeminen ääneen on puuduttavaa. Ota valikosta käyttöön Lukutila, niin PageVox rajaa sivun itse artikkeliin sekä näytöllä että luettavassa tekstissä.</p>
+
+<p>Lukutilan käyttöönotto tai poistaminen poimii sivun tekstin uudelleen, joten luku pysähtyy ja käynnistät sen uudelleen toistopainikkeesta uudella asetuksella.</p>
+
+<h2>Sivun lukemisen helpottaminen</h2>
+
+<p>Valikossa on tekstin koon säädin miinus- ja pluspainikkeineen. Koko muistetaan ja sitä käytetään kaikilla sivuilla.</p>
+
+<p>Asetuksista voit myös ottaa käyttöön tumman tilan verkkosivuille. Se antaa tumman ulkoasun sivustoille, joilla sellaista ei itsellään ole, mukaan lukien pelkkää tekstiä sisältävät tiedostot.</p>
+
+<h2>Kirjanmerkit, historia ja lukemisen jatkaminen</h2>
+
+<p>Osoiterivin oikeassa reunassa oleva tähti tallentaa nykyisen sivun kirjanmerkiksi. Napauta uudelleen poistaaksesi kirjanmerkin.</p>
+
+<p>Valitse valikosta Kirjanmerkit ja historia avataksesi kirjastosi. Siinä on kolme välilehteä. Jatka listaa sivut, jotka olet aloittanut mutta et lukenut loppuun, sekä sen, kuinka pitkälle olet päässyt ja suunnilleen kuinka kauan on jäljellä nykyisellä lukunopeudella. Kirjanmerkit listaa tallentamasi sivut. Historia listaa viimeksi avatut sivut uusimmasta alkaen, ja siinä on painike historian tyhjentämiseen.</p>
+
+<p>Napauta mitä tahansa kirjaston sivua avataksesi sen. Se jatkuu virkkeestä, johon lopetit.</p>
+
+<h2>Sivustoille kirjautuminen</h2>
+
+<p>PageVox pitää sinut kirjautuneena kuten mikä tahansa selain. Kirjaudu kerran, ja sivusto muistaa sinut myös sovelluksen sulkemisen jälkeen.</p>
+
+<p>Joillakin sivustoilla kirjautumispainike avaa pienen ponnahdusikkunan. PageVoxissa ei ole välilehtiä, joten se muuttaa ponnahdusikkunat tavalliseksi sivunvaihdoksi samassa ikkunassa ja palauttaa sinut sivustolle jälkeenpäin.</p>
+
+<p>Muutamia sivuja suojaa verkkopalvelin itse kirjautumislomakkeen sijaan. Ne kysyvät käyttäjätunnusta ja salasanaa pienessä ikkunassa ennen sivun näyttämistä. PageVox tarjoutuu muistamaan kirjoittamasi tiedot, joten suojattu sivusto kysyy niitä vain kerran.</p>
+
+<p>Jotkin kirjautumispalvelut, muun muassa Google, eivät hyväksy kirjautumista toisen sovelluksen selaimen sisältä. Kyse on niiden omasta päätöksestä, eikä yksikään näin rakennettu selain voi kiertää sitä. Jos palvelu hylkää kirjautumisen, käytä sivuston omaa käyttäjätunnusta ja salasanaa, jos sellainen on tarjolla.</p>
+
+<p>Voit kirjautua ulos kaikkialta kerralla avaamalla Asetukset ja valitsemalla Tyhjennä evästeet ja kirjaudu ulos. Kirjanmerkit, historia ja lukukohdat säilyvät.</p>
+
+<h2>Aloitussivusi</h2>
+
+<p>Valikossa on Aloitussivu-kohta, joka vie sinut aloitussivullesi. Kunnes valitset oman, aloitussivuna on tämä käyttöohje.</p>
+
+<p>Asettaaksesi oman avaa valikosta Asetukset, kirjoita osoite kenttään Aloitussivun osoite ja paina Tallenna. Jos haluat joskus ohjeen takaisin aloitussivuksi, tyhjennä kenttä ja tallenna se tyhjänä.</p>
+
+<p>Valikossa on myös kohta Yksi taso ylöspäin, joka pudottaa nykyisen verkko-osoitteen viimeisen osan pois. Siitä on hyötyä siirryttäessä ylöspäin tiedostokansiosta.</p>
+
+<h2>Tämän ohjeen löytäminen uudelleen</h2>
+
+<p>Riippumatta siitä, minkä asetat aloitussivuksesi, tämä ohje on aina yhden napautuksen päässä. Avaa kolmen pisteen valikko ja valitse Käyttöohje.</p>
+
+<h2>Jos jokin ei toimi</h2>
+
+<p>Jos toistopainikkeen painaminen ei tuota mitään ääntä, laitteeseesi ei ehkä ole asennettu tai määritetty puhesynteesiä. Valitse valikosta Puheäänen asetukset avataksesi Androidin puhesynteesiasetukset, joissa voit asentaa äänen, valita moottorin ja testata sitä. Useimmissa laitteissa nämä asetukset löytyvät myös Esteettömyys-kohdasta.</p>
+
+<p>Jos sivusta luetaan vain osa, loppu ei todennäköisesti ole tavallista tekstiä. PageVox lukee kappaleet, otsikot, luettelokohdat ja muotoillun tekstin. Kuvien sisään piirrettyä tekstiä ei voi lukea.</p>
+
+<p>Jos virkkeen napauttaminen ei tee mitään, napautus ei osunut tekstiin, jonka PageVox tunnistaa. Kokeile napauttaa rivin keskeltä aivan näytön reunan sijaan tai käytä liukusäädintä.</p>
+
+<p>Jos sivu luetaan väärällä kielellä tai korostuksella, sivu saattaa ilmoittaa kielensä väärin. Valitse Asetuksista tietty ääni ohittaaksesi sen.</p>
+
+<h2>Tietosi</h2>
+
+<p>Historiasi, kirjanmerkkisi, lukukohtasi ja asetuksesi tallennetaan tälle laitteelle, samoin evästeet, jotka pitävät sinut kirjautuneena sivustoille. Asetuksissa on myös linkki tietosuojakäytäntöön ja niiden avoimen lähdekoodin ohjelmistojen lisensseihin, joista PageVox on rakennettu.</p>
+
+<h2>Tietoja</h2>
+
+<p>PageVox on avoimen lähdekoodin projekti, joka on julkaistu Apache License 2.0 -lisenssillä. Kiitos, että käytät sitä.</p>
+
+<p>Sovellus on ilmainen ja pysyy sellaisena. Mikään ei ole maksun takana eikä mainoksia ole. Jos haluat silti tukea työtä, valikossa on kohta Tue kehitystyötä, joka avaa maksusivun tavallisessa selaimessasi. Se on täysin vapaaehtoista eikä avaa mitään lisäominaisuuksia.</p>
+
+</main>
+</body>
+</html>

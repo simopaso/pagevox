@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -117,7 +118,9 @@ fun AddressBar(
                         IconButton(onClick = onToggleBookmark) {
                             Icon(
                                 imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
-                                contentDescription = if (isBookmarked) "Remove bookmark" else "Add bookmark"
+                                contentDescription = stringResource(
+                                    if (isBookmarked) R.string.remove_bookmark else R.string.add_bookmark
+                                )
                             )
                         }
                     },

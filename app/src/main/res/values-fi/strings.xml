@@ -1,0 +1,87 @@
+<resources>
+    <!-- Finnish. Machine-drafted; proofread before release. -->
+
+    <!-- Address bar -->
+    <string name="add_bookmark">Lisää kirjanmerkki</string>
+    <string name="remove_bookmark">Poista kirjanmerkki</string>
+
+    <!-- Playback controls -->
+    <string name="nav_back">Takaisin</string>
+    <string name="nav_forward">Eteenpäin</string>
+    <string name="play_pause">Toista tai keskeytä</string>
+    <string name="previous_sentence">Edellinen virke</string>
+    <string name="next_sentence">Seuraava virke</string>
+    <string name="previous_section">Edellinen osio</string>
+    <string name="next_section">Seuraava osio</string>
+    <string name="more_options">Lisää toimintoja</string>
+
+    <!-- Overflow menu -->
+    <string name="menu_up_one_level">Yksi taso ylöspäin</string>
+    <string name="menu_home">Aloitussivu</string>
+    <string name="menu_library">Kirjanmerkit ja historia</string>
+    <string name="menu_text_size">Tekstin koko</string>
+    <string name="decrease_text_size">Pienennä tekstiä</string>
+    <string name="increase_text_size">Suurenna tekstiä</string>
+    <string name="text_zoom_percent">%1$d %%</string>
+    <string name="menu_reader_mode">Lukutila</string>
+    <string name="menu_follow_along">Seuraa lukemista</string>
+    <string name="menu_reading_speed">Lukunopeus</string>
+    <string name="menu_settings">Asetukset</string>
+    <string name="menu_tts_settings">Puheäänen asetukset</string>
+    <string name="menu_user_manual">Käyttöohje</string>
+    <string name="menu_support_development">Tue kehitystyötä</string>
+    <string name="state_on">Käytössä</string>
+    <string name="state_selected">Valittu</string>
+    <string name="open_with">Avaa sovelluksessa</string>
+
+    <!-- Exit confirmation -->
+    <string name="exit_title">Suljetaanko PageVox?</string>
+    <string name="exit_message">Edellistä sivua, jolle palata, ei ole. Suljetaanko sovellus?</string>
+    <string name="exit_confirm">Sulje</string>
+    <string name="cancel">Peruuta</string>
+
+    <!-- Library sheet -->
+    <string name="tab_continue">Jatka</string>
+    <string name="tab_bookmarks">Kirjanmerkit</string>
+    <string name="tab_history">Historia</string>
+    <string name="clear_history">Tyhjennä historia</string>
+    <string name="empty_continue">Ei kesken olevia sivuja — aloittamasi sivut näkyvät täällä</string>
+    <string name="empty_bookmarks">Ei kirjanmerkkejä</string>
+    <string name="empty_history">Ei historiaa</string>
+    <string name="progress_summary">%1$d %% · %2$s</string>
+    <string name="time_left_almost_done">melkein valmis</string>
+    <string name="time_left_under_a_minute">alle minuutti jäljellä</string>
+    <string name="time_left_minutes">%1$d min jäljellä</string>
+    <string name="time_left_hours">%1$d h jäljellä</string>
+    <string name="time_left_hours_minutes">%1$d h %2$d min jäljellä</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Asetukset</string>
+    <string name="settings_home_url">Aloitussivun osoite:</string>
+    <string name="settings_home_url_hint">Jätä tyhjäksi, jos haluat käyttää sovelluksen käyttöohjetta</string>
+    <string name="settings_dark_web">Tumma tila verkkosivuille</string>
+    <string name="settings_dark_web_summary">Pakota tumma ulkoasu sivustoille ja tiedostoille</string>
+    <string name="settings_voice">Lukuääni</string>
+    <string name="settings_voice_summary">Korvaa järjestelmän äänen ääneen luettaessa</string>
+    <string name="settings_voice_system_default">Järjestelmän oletus</string>
+    <string name="settings_clear_site_data">Tyhjennä evästeet ja kirjaudu ulos</string>
+    <string name="settings_clear_site_data_summary">Kirjaa sinut ulos kaikilta sivustoilta</string>
+    <string name="settings_licenses">Avoimen lähdekoodin lisenssit</string>
+    <string name="settings_privacy">Tietosuojakäytäntö</string>
+    <string name="save">Tallenna</string>
+
+    <!-- Sign-out confirmation -->
+    <string name="clear_site_data_title">Tyhjennetäänkö evästeet ja kirjaudutaanko ulos?</string>
+    <string name="clear_site_data_message">Sinut kirjataan ulos kaikilta sivustoilta, joihin olet kirjautunut tällä laitteella. Kirjanmerkit, historia ja lukukohdat säilyvät.</string>
+    <string name="clear_site_data_confirm">Kirjaudu ulos</string>
+
+    <!-- Licenses -->
+    <string name="licenses_intro">PageVox on rakennettu seuraavilla avoimen lähdekoodin ohjelmistoilla.</string>
+    <string name="close">Sulje</string>
+
+    <!-- HTTP authentication -->
+    <string name="http_auth_title">Kirjaudu sivustolle %1$s</string>
+    <string name="http_auth_username">Käyttäjätunnus</string>
+    <string name="http_auth_password">Salasana</string>
+    <string name="http_auth_sign_in">Kirjaudu</string>
+</resources>

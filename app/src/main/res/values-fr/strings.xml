@@ -1,0 +1,89 @@
+<resources>
+    <!-- French. Machine-drafted; proofread before release.
+         Addresses the user formally ("vous") throughout — keep that consistent
+         if you add strings. Apostrophes must be escaped as \' in XML. -->
+
+    <!-- Address bar -->
+    <string name="add_bookmark">Ajouter un favori</string>
+    <string name="remove_bookmark">Supprimer le favori</string>
+
+    <!-- Playback controls -->
+    <string name="nav_back">Retour</string>
+    <string name="nav_forward">Avancer</string>
+    <string name="play_pause">Lecture ou pause</string>
+    <string name="previous_sentence">Phrase précédente</string>
+    <string name="next_sentence">Phrase suivante</string>
+    <string name="previous_section">Section précédente</string>
+    <string name="next_section">Section suivante</string>
+    <string name="more_options">Plus d\'options</string>
+
+    <!-- Overflow menu -->
+    <string name="menu_up_one_level">Remonter d\'un niveau</string>
+    <string name="menu_home">Page d\'accueil</string>
+    <string name="menu_library">Favoris et historique</string>
+    <string name="menu_text_size">Taille du texte</string>
+    <string name="decrease_text_size">Réduire la taille du texte</string>
+    <string name="increase_text_size">Augmenter la taille du texte</string>
+    <string name="text_zoom_percent">%1$d %%</string>
+    <string name="menu_reader_mode">Mode lecture</string>
+    <string name="menu_follow_along">Suivi de lecture</string>
+    <string name="menu_reading_speed">Vitesse de lecture</string>
+    <string name="menu_settings">Paramètres</string>
+    <string name="menu_tts_settings">Paramètres de synthèse vocale</string>
+    <string name="menu_user_manual">Manuel d\'utilisation</string>
+    <string name="menu_support_development">Soutenir le développement</string>
+    <string name="state_on">Activé</string>
+    <string name="state_selected">Sélectionné</string>
+    <string name="open_with">Ouvrir avec</string>
+
+    <!-- Exit confirmation -->
+    <string name="exit_title">Quitter PageVox ?</string>
+    <string name="exit_message">Il n\'y a pas de page précédente vers laquelle revenir. Fermer l\'application ?</string>
+    <string name="exit_confirm">Quitter</string>
+    <string name="cancel">Annuler</string>
+
+    <!-- Library sheet -->
+    <string name="tab_continue">Reprendre</string>
+    <string name="tab_bookmarks">Favoris</string>
+    <string name="tab_history">Historique</string>
+    <string name="clear_history">Effacer l\'historique</string>
+    <string name="empty_continue">Rien en cours — les pages que vous commencez à lire apparaîtront ici</string>
+    <string name="empty_bookmarks">Aucun favori</string>
+    <string name="empty_history">Aucun historique</string>
+    <string name="progress_summary">%1$d %% · %2$s</string>
+    <string name="time_left_almost_done">bientôt terminé</string>
+    <string name="time_left_under_a_minute">moins d\'une minute restante</string>
+    <string name="time_left_minutes">%1$d min restantes</string>
+    <string name="time_left_hours">%1$d h restantes</string>
+    <string name="time_left_hours_minutes">%1$d h %2$d min restantes</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Paramètres</string>
+    <string name="settings_home_url">Adresse de la page d\'accueil :</string>
+    <string name="settings_home_url_hint">Laissez vide pour utiliser le manuel intégré</string>
+    <string name="settings_dark_web">Mode sombre pour les pages web</string>
+    <string name="settings_dark_web_summary">Forcer une apparence sombre sur les sites et les fichiers</string>
+    <string name="settings_voice">Voix de lecture</string>
+    <string name="settings_voice_summary">Remplace la voix du système pour la lecture à voix haute</string>
+    <string name="settings_voice_system_default">Valeur par défaut du système</string>
+    <string name="settings_clear_site_data">Effacer les cookies et se déconnecter</string>
+    <string name="settings_clear_site_data_summary">Vous déconnecte de tous les sites</string>
+    <string name="settings_licenses">Licences open source</string>
+    <string name="settings_privacy">Politique de confidentialité</string>
+    <string name="save">Enregistrer</string>
+
+    <!-- Sign-out confirmation -->
+    <string name="clear_site_data_title">Effacer les cookies et se déconnecter ?</string>
+    <string name="clear_site_data_message">Vous serez déconnecté de tous les sites auxquels vous êtes connecté sur cet appareil. Les favoris, l\'historique et les positions de lecture sont conservés.</string>
+    <string name="clear_site_data_confirm">Se déconnecter</string>
+
+    <!-- Licenses -->
+    <string name="licenses_intro">PageVox est construit avec les logiciels open source suivants.</string>
+    <string name="close">Fermer</string>
+
+    <!-- HTTP authentication -->
+    <string name="http_auth_title">Se connecter à %1$s</string>
+    <string name="http_auth_username">Nom d\'utilisateur</string>
+    <string name="http_auth_password">Mot de passe</string>
+    <string name="http_auth_sign_in">Se connecter</string>
+</resources>

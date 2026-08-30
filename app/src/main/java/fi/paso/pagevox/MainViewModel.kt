@@ -20,6 +20,10 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var currentSentenceText by mutableStateOf("")   // drives the "Now Reading" bar
     var currentHighlightIndex by mutableIntStateOf(-1)
     var sentences = emptyList<String>()
+    // Sentence indices where a page section (h1–h6) starts, for the scrubber's
+    // section ticks. Kept as UI state so recomposition picks it up; the service
+    // reads the same data straight from PlaybackDataRepository.
+    var sectionStarts by mutableStateOf<List<Int>>(emptyList())
     var history by mutableStateOf<List<WebPage>>(emptyList())
     var bookmarks by mutableStateOf<List<WebPage>>(emptyList())
     var currentPageTitle by mutableStateOf("")
@@ -31,6 +35,18 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var selectedVoice by mutableStateOf("")   // "" = system default voice
 
     val isCurrentBookmarked: Boolean get() = bookmarks.any { it.url == url }
+
+    /** Pages started but not finished, newest first — the "Continue listening"
+     *  shelf. Entries saved before the sentence count was recorded (position but
+     *  no total) can't be shown as a percentage, so they're left out until the
+     *  page is read again. */
+    val continueListening: List<WebPage>
+        get() = history.filter {
+            it.sentenceCount > 0 && it.position > 0 && it.position < it.sentenceCount - 1
+        }
+
+    /** Heading of the section [index] falls in, for the scrubber readout. */
+    fun sectionTitleAt(index: Int): String? = PlaybackDataRepository.sectionTitleAt(index)
 
     private var initialIndex = 0
 
@@ -52,6 +68,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         // appearing empty until the user presses play again.
         if (PlaybackDataRepository.sentences.isNotEmpty()) {
             sentences = PlaybackDataRepository.sentences.toList()
+            sectionStarts = PlaybackDataRepository.sectionStarts.toList()
         }
         viewModelScope.launch {
             val prefs = repo.prefsFlow.first()
@@ -141,6 +158,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         }?.position ?: 0
         initialIndex = savedPosition
         sentences = emptyList()
+        sectionStarts = emptyList()
         viewModelScope.launch {
             repo.updateLastUrl(newUrl)
             repo.updateLastIndex(savedPosition)
@@ -167,9 +185,15 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
 
     fun clearHistory() = viewModelScope.launch { repo.clearHistory() }
 
+    /** Save the home page. An empty field means "no real home page set", which
+     *  resolves to the bundled manual — resolved here and not only in
+     *  [SettingsRepository], because this in-memory value is what the Home
+     *  button reads for the rest of the session and loading "" would leave the
+     *  screen with no WebView at all. */
     fun updateHomeUrl(newUrl: String) {
-        homeUrl = newUrl
-        viewModelScope.launch { repo.updateHomeUrl(newUrl) }
+        val resolved = newUrl.trim().ifBlank { manualUrl() }
+        homeUrl = resolved
+        viewModelScope.launch { repo.updateHomeUrl(resolved) }
     }
 
     fun updateForceDarkWeb(enabled: Boolean) {
@@ -201,6 +225,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     fun toggleReaderMode() {
         readerMode = !readerMode
         sentences = emptyList()
+        sectionStarts = emptyList()
         currentHighlightIndex = -1
         currentSentenceText = ""
         PlaybackDataRepository.clear()
@@ -221,28 +246,28 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         viewModelScope.launch { repo.updateSelectedVoice(name) }
     }
 
-    fun onTextsExtracted(lang: String?, elementTexts: List<String>, onReadyToPlay: () -> Unit) {
+    fun onTextsExtracted(lang: String?, blocks: List<PageBlock>, onReadyToPlay: () -> Unit) {
         viewModelScope.launch {
             isLoading = true
             val result = withContext(Dispatchers.Default) {
-                val extracted = mutableListOf<String>()
-                elementTexts.forEach { text ->
-                    // innerText keeps the newlines the browser inserts for <br>
-                    // and inner block boundaries. Collapse all whitespace runs to a
-                    // single space first, otherwise those embedded newlines survive
-                    // inside a sentence and the TTS engine pauses mid-sentence on them.
-                    val normalized = text.replace(Regex("\\s+"), " ").trim()
-                    extracted.addAll(splitIntoSentences(normalized))
-                }
-                if (extracted.isNotEmpty()) extracted else null
+                buildNarration(blocks, lang).takeIf { it.display.isNotEmpty() }
             }
             if (result != null) {
-                sentences = result
+                sentences = result.display
+                sectionStarts = result.sectionStarts
                 // Seed the resume point from initialIndex (restored from disk on
                 // a cold start, or the per-page saved position when revisiting).
                 // Warm restarts don't re-extract, so this only runs when the
                 // sentence set is genuinely (re)built.
-                PlaybackDataRepository.setSentences(sentences, lang, url, initialIndex)
+                PlaybackDataRepository.setSentences(
+                    result.display,
+                    language = lang,
+                    pageUrl = url,
+                    startIndex = initialIndex,
+                    spokenSentences = result.spoken,
+                    sectionStarts = result.sectionStarts,
+                    sectionTitles = result.sectionTitles
+                )
                 onReadyToPlay()
             }
             isLoading = false

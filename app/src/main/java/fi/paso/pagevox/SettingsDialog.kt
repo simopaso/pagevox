@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NoAccounts
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,6 +64,7 @@ fun SettingsDialog(
     selectedVoice: String,
     onSelectVoice: (String) -> Unit,
     onShowLicenses: () -> Unit,
+    onClearSiteData: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
@@ -93,20 +96,25 @@ fun SettingsDialog(
 
     var voiceMenuOpen by remember { mutableStateOf(false) }
     val currentVoiceLabel = when {
-        selectedVoice.isBlank() -> "System default"
+        selectedVoice.isBlank() -> stringResource(R.string.settings_voice_system_default)
         else -> voices.firstOrNull { it.name == selectedVoice }?.locale?.displayName ?: selectedVoice
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Settings") },
+        title = { Text(stringResource(R.string.settings_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("Home Page URL:")
+                Text(stringResource(R.string.settings_home_url))
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
                     singleLine = true
+                )
+                Text(
+                    stringResource(R.string.settings_home_url_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(
@@ -116,9 +124,9 @@ fun SettingsDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Dark mode for web pages")
+                        Text(stringResource(R.string.settings_dark_web))
                         Text(
-                            "Force a dark appearance on websites and files",
+                            stringResource(R.string.settings_dark_web_summary),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -127,9 +135,9 @@ fun SettingsDialog(
                     Switch(checked = forceDarkWeb, onCheckedChange = onToggleForceDarkWeb)
                 }
                 Spacer(Modifier.height(16.dp))
-                Text("Reading voice")
+                Text(stringResource(R.string.settings_voice))
                 Text(
-                    "Overrides the system voice for read-aloud",
+                    stringResource(R.string.settings_voice_summary),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -152,10 +160,12 @@ fun SettingsDialog(
                         onDismissRequest = { voiceMenuOpen = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("System default") },
+                            text = { Text(stringResource(R.string.settings_voice_system_default)) },
                             onClick = { onSelectVoice(""); voiceMenuOpen = false },
                             trailingIcon = {
-                                if (selectedVoice.isBlank()) Icon(Icons.Default.Check, "Selected")
+                                if (selectedVoice.isBlank()) {
+                                    Icon(Icons.Default.Check, stringResource(R.string.state_selected))
+                                }
                             }
                         )
                         voices.forEach { v ->
@@ -174,7 +184,9 @@ fun SettingsDialog(
                                 },
                                 onClick = { onSelectVoice(v.name); voiceMenuOpen = false },
                                 trailingIcon = {
-                                    if (v.name == selectedVoice) Icon(Icons.Default.Check, "Selected")
+                                    if (v.name == selectedVoice) {
+                                        Icon(Icons.Default.Check, stringResource(R.string.state_selected))
+                                    }
                                 }
                             )
                         }
@@ -182,6 +194,28 @@ fun SettingsDialog(
                 }
                 Spacer(Modifier.height(16.dp))
                 HorizontalDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onClearSiteData() }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.NoAccounts,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(stringResource(R.string.settings_clear_site_data))
+                        Text(
+                            stringResource(R.string.settings_clear_site_data_summary),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -195,7 +229,7 @@ fun SettingsDialog(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.width(12.dp))
-                    Text("Open-source licenses")
+                    Text(stringResource(R.string.settings_licenses))
                 }
                 Row(
                     modifier = Modifier
@@ -214,18 +248,18 @@ fun SettingsDialog(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.width(12.dp))
-                    Text("Privacy policy")
+                    Text(stringResource(R.string.settings_privacy))
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = { onSave(text) }) {
-                Text("Save")
+                Text(stringResource(R.string.save))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -266,8 +300,13 @@ fun LicensesDialog(onDismiss: () -> Unit) {
                         .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onDismiss) { Icon(Icons.Default.Close, "Close") }
-                    Text("Open-source licenses", style = MaterialTheme.typography.titleLarge)
+                    IconButton(onDismiss) {
+                        Icon(Icons.Default.Close, stringResource(R.string.close))
+                    }
+                    Text(
+                        stringResource(R.string.settings_licenses),
+                        style = MaterialTheme.typography.titleLarge
+                    )
                 }
                 Column(
                     Modifier
@@ -276,12 +315,15 @@ fun LicensesDialog(onDismiss: () -> Unit) {
                         .padding(horizontal = 16.dp)
                 ) {
                     Text(
-                        "PageVox is built with the following open-source software.",
+                        stringResource(R.string.licenses_intro),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(20.dp))
 
-                    Text("Apache License 2.0", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        stringResource(R.string.licenses_apache_heading),
+                        style = MaterialTheme.typography.titleMedium
+                    )
                     Spacer(Modifier.height(4.dp))
                     APACHE_LIBRARIES.forEach {
                         Text("•  $it", style = MaterialTheme.typography.bodyMedium)

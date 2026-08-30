@@ -1,0 +1,87 @@
+<resources>
+    <!-- Swedish. Machine-drafted; proofread before release. -->
+
+    <!-- Address bar -->
+    <string name="add_bookmark">Lägg till bokmärke</string>
+    <string name="remove_bookmark">Ta bort bokmärke</string>
+
+    <!-- Playback controls -->
+    <string name="nav_back">Tillbaka</string>
+    <string name="nav_forward">Framåt</string>
+    <string name="play_pause">Spela upp eller pausa</string>
+    <string name="previous_sentence">Föregående mening</string>
+    <string name="next_sentence">Nästa mening</string>
+    <string name="previous_section">Föregående avsnitt</string>
+    <string name="next_section">Nästa avsnitt</string>
+    <string name="more_options">Fler alternativ</string>
+
+    <!-- Overflow menu -->
+    <string name="menu_up_one_level">Upp en nivå</string>
+    <string name="menu_home">Startsida</string>
+    <string name="menu_library">Bokmärken och historik</string>
+    <string name="menu_text_size">Textstorlek</string>
+    <string name="decrease_text_size">Minska textstorleken</string>
+    <string name="increase_text_size">Öka textstorleken</string>
+    <string name="text_zoom_percent">%1$d %%</string>
+    <string name="menu_reader_mode">Läsläge</string>
+    <string name="menu_follow_along">Följ med</string>
+    <string name="menu_reading_speed">Uppläsningshastighet</string>
+    <string name="menu_settings">Inställningar</string>
+    <string name="menu_tts_settings">Inställningar för talsyntes</string>
+    <string name="menu_user_manual">Användarhandbok</string>
+    <string name="menu_support_development">Stöd utvecklingen</string>
+    <string name="state_on">På</string>
+    <string name="state_selected">Vald</string>
+    <string name="open_with">Öppna med</string>
+
+    <!-- Exit confirmation -->
+    <string name="exit_title">Avsluta PageVox?</string>
+    <string name="exit_message">Det finns ingen föregående sida att gå tillbaka till. Vill du stänga appen?</string>
+    <string name="exit_confirm">Avsluta</string>
+    <string name="cancel">Avbryt</string>
+
+    <!-- Library sheet -->
+    <string name="tab_continue">Fortsätt</string>
+    <string name="tab_bookmarks">Bokmärken</string>
+    <string name="tab_history">Historik</string>
+    <string name="clear_history">Rensa historik</string>
+    <string name="empty_continue">Inget påbörjat — sidor du börjar läsa dyker upp här</string>
+    <string name="empty_bookmarks">Inga bokmärken än</string>
+    <string name="empty_history">Ingen historik än</string>
+    <string name="progress_summary">%1$d %% · %2$s</string>
+    <string name="time_left_almost_done">nästan klar</string>
+    <string name="time_left_under_a_minute">mindre än en minut kvar</string>
+    <string name="time_left_minutes">%1$d min kvar</string>
+    <string name="time_left_hours">%1$d h kvar</string>
+    <string name="time_left_hours_minutes">%1$d h %2$d min kvar</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Inställningar</string>
+    <string name="settings_home_url">Startsidans adress:</string>
+    <string name="settings_home_url_hint">Lämna tomt för att använda den inbyggda användarhandboken</string>
+    <string name="settings_dark_web">Mörkt läge för webbsidor</string>
+    <string name="settings_dark_web_summary">Tvinga fram ett mörkt utseende på webbplatser och filer</string>
+    <string name="settings_voice">Uppläsningsröst</string>
+    <string name="settings_voice_summary">Ersätter systemets röst vid uppläsning</string>
+    <string name="settings_voice_system_default">Systemets standard</string>
+    <string name="settings_clear_site_data">Rensa cookies och logga ut</string>
+    <string name="settings_clear_site_data_summary">Loggar ut dig från alla webbplatser</string>
+    <string name="settings_licenses">Licenser för öppen källkod</string>
+    <string name="settings_privacy">Integritetspolicy</string>
+    <string name="save">Spara</string>
+
+    <!-- Sign-out confirmation -->
+    <string name="clear_site_data_title">Rensa cookies och logga ut?</string>
+    <string name="clear_site_data_message">Du loggas ut från alla webbplatser du är inloggad på med den här enheten. Bokmärken, historik och läspositioner behålls.</string>
+    <string name="clear_site_data_confirm">Logga ut</string>
+
+    <!-- Licenses -->
+    <string name="licenses_intro">PageVox är byggd med följande programvara med öppen källkod.</string>
+    <string name="close">Stäng</string>
+
+    <!-- HTTP authentication -->
+    <string name="http_auth_title">Logga in på %1$s</string>
+    <string name="http_auth_username">Användarnamn</string>
+    <string name="http_auth_password">Lösenord</string>
+    <string name="http_auth_sign_in">Logga in</string>
+</resources>

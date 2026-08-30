@@ -1,0 +1,89 @@
+<resources>
+    <!-- German. Machine-drafted; proofread before release.
+         Addresses the user informally ("du") throughout, as is usual for
+         consumer apps — keep that consistent if you add strings. -->
+
+    <!-- Address bar -->
+    <string name="add_bookmark">Lesezeichen hinzufügen</string>
+    <string name="remove_bookmark">Lesezeichen entfernen</string>
+
+    <!-- Playback controls -->
+    <string name="nav_back">Zurück</string>
+    <string name="nav_forward">Vorwärts</string>
+    <string name="play_pause">Wiedergabe oder Pause</string>
+    <string name="previous_sentence">Vorheriger Satz</string>
+    <string name="next_sentence">Nächster Satz</string>
+    <string name="previous_section">Vorheriger Abschnitt</string>
+    <string name="next_section">Nächster Abschnitt</string>
+    <string name="more_options">Weitere Optionen</string>
+
+    <!-- Overflow menu -->
+    <string name="menu_up_one_level">Eine Ebene nach oben</string>
+    <string name="menu_home">Startseite</string>
+    <string name="menu_library">Lesezeichen und Verlauf</string>
+    <string name="menu_text_size">Textgröße</string>
+    <string name="decrease_text_size">Text verkleinern</string>
+    <string name="increase_text_size">Text vergrößern</string>
+    <string name="text_zoom_percent">%1$d %%</string>
+    <string name="menu_reader_mode">Lesemodus</string>
+    <string name="menu_follow_along">Mitlesen</string>
+    <string name="menu_reading_speed">Lesegeschwindigkeit</string>
+    <string name="menu_settings">Einstellungen</string>
+    <string name="menu_tts_settings">Einstellungen für Sprachausgabe</string>
+    <string name="menu_user_manual">Handbuch</string>
+    <string name="menu_support_development">Entwicklung unterstützen</string>
+    <string name="state_on">Ein</string>
+    <string name="state_selected">Ausgewählt</string>
+    <string name="open_with">Öffnen mit</string>
+
+    <!-- Exit confirmation -->
+    <string name="exit_title">PageVox beenden?</string>
+    <string name="exit_message">Es gibt keine vorherige Seite, zu der du zurückkehren könntest. App schließen?</string>
+    <string name="exit_confirm">Beenden</string>
+    <string name="cancel">Abbrechen</string>
+
+    <!-- Library sheet -->
+    <string name="tab_continue">Weiterlesen</string>
+    <string name="tab_bookmarks">Lesezeichen</string>
+    <string name="tab_history">Verlauf</string>
+    <string name="clear_history">Verlauf löschen</string>
+    <string name="empty_continue">Nichts begonnen — Seiten, die du zu lesen beginnst, erscheinen hier</string>
+    <string name="empty_bookmarks">Noch keine Lesezeichen</string>
+    <string name="empty_history">Noch kein Verlauf</string>
+    <string name="progress_summary">%1$d %% · %2$s</string>
+    <string name="time_left_almost_done">fast fertig</string>
+    <string name="time_left_under_a_minute">weniger als eine Minute übrig</string>
+    <string name="time_left_minutes">noch %1$d min</string>
+    <string name="time_left_hours">noch %1$d h</string>
+    <string name="time_left_hours_minutes">noch %1$d h %2$d min</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Einstellungen</string>
+    <string name="settings_home_url">Adresse der Startseite:</string>
+    <string name="settings_home_url_hint">Leer lassen, um das integrierte Handbuch zu verwenden</string>
+    <string name="settings_dark_web">Dunkler Modus für Webseiten</string>
+    <string name="settings_dark_web_summary">Dunkles Erscheinungsbild für Websites und Dateien erzwingen</string>
+    <string name="settings_voice">Vorlesestimme</string>
+    <string name="settings_voice_summary">Überschreibt die Systemstimme beim Vorlesen</string>
+    <string name="settings_voice_system_default">Systemstandard</string>
+    <string name="settings_clear_site_data">Cookies löschen und abmelden</string>
+    <string name="settings_clear_site_data_summary">Meldet dich von allen Websites ab</string>
+    <string name="settings_licenses">Open-Source-Lizenzen</string>
+    <string name="settings_privacy">Datenschutzerklärung</string>
+    <string name="save">Speichern</string>
+
+    <!-- Sign-out confirmation -->
+    <string name="clear_site_data_title">Cookies löschen und abmelden?</string>
+    <string name="clear_site_data_message">Du wirst auf diesem Gerät von allen Websites abgemeldet, bei denen du angemeldet bist. Lesezeichen, Verlauf und Lesepositionen bleiben erhalten.</string>
+    <string name="clear_site_data_confirm">Abmelden</string>
+
+    <!-- Licenses -->
+    <string name="licenses_intro">PageVox wurde mit der folgenden Open-Source-Software erstellt.</string>
+    <string name="close">Schließen</string>
+
+    <!-- HTTP authentication -->
+    <string name="http_auth_title">Bei %1$s anmelden</string>
+    <string name="http_auth_username">Benutzername</string>
+    <string name="http_auth_password">Passwort</string>
+    <string name="http_auth_sign_in">Anmelden</string>
+</resources>

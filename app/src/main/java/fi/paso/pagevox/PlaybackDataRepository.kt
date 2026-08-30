@@ -7,14 +7,27 @@ package fi.paso.pagevox
  */
 object PlaybackDataRepository {
     private val _sentences = mutableListOf<String>()
+    // What the engine actually says for each sentence: the same text with
+    // citation markers, bare URLs and unpronounceable abbreviations cleaned up
+    // (see cleanForNarration). Kept parallel to, and never a replacement for,
+    // [_sentences] — the verbatim text is what locates a sentence in the page
+    // DOM for the follow-along highlight and tap-to-seek.
+    private val _spokenSentences = mutableListOf<String>()
     // Per-sentence estimates at 1× speed; the published timeline below is these
     // divided by the current speech rate, rebuilt whenever either changes.
     private val _baseDurationsMs = mutableListOf<Long>()
     private val _sentenceStartsMs = mutableListOf<Long>()
     private var _totalDurationMs = 0L
+    // Sentence indices that open a section (an h1–h6 block on the page),
+    // ascending, with the heading text at the same position in _sectionTitles.
+    private val _sectionStarts = mutableListOf<Int>()
+    private val _sectionTitles = mutableListOf<String>()
 
     val sentences: List<String> get() = _sentences
     val totalDurationMs: Long get() = _totalDurationMs
+
+    /** Sentence indices where a page section (heading) begins, ascending. */
+    val sectionStarts: List<Int> get() = _sectionStarts
 
     /**
      * BCP-47 language tag of the loaded page (e.g. "en", "fr-CA"), or null when
@@ -80,24 +93,47 @@ object PlaybackDataRepository {
         newSentences: List<String>,
         language: String? = null,
         pageUrl: String? = null,
-        startIndex: Int = 0
+        startIndex: Int = 0,
+        spokenSentences: List<String> = emptyList(),
+        sectionStarts: List<Int> = emptyList(),
+        sectionTitles: List<String> = emptyList()
     ) {
         _sentences.clear()
         _sentences.addAll(newSentences)
+        _spokenSentences.clear()
+        // Only trust a spoken list that lines up one-to-one; anything else would
+        // silently speak the wrong sentence, so fall back to verbatim text.
+        if (spokenSentences.size == newSentences.size) _spokenSentences.addAll(spokenSentences)
+        _sectionStarts.clear()
+        _sectionTitles.clear()
+        // Sorted, because everything below reads this as an ordered list —
+        // isSectionStart binary-searches it, and next/previous take the first
+        // and last entry past a given index.
+        sectionStarts.mapIndexedNotNull { i, start ->
+            if (start in newSentences.indices) start to sectionTitles.getOrElse(i) { "" } else null
+        }.sortedBy { it.first }.forEach { (start, title) ->
+            _sectionStarts.add(start)
+            _sectionTitles.add(title)
+        }
         this.language = language
         this.pageUrl = pageUrl
         // Seed the resume point for this freshly-loaded page. On a cold start the
         // caller passes the position restored from disk; on a new page it's 0.
         currentIndex = startIndex.coerceIn(0, (newSentences.size - 1).coerceAtLeast(0))
         _baseDurationsMs.clear()
-        _sentences.mapTo(_baseDurationsMs) { estimateSentenceDurationMs(it) }
+        // Estimate from what is spoken, not what is shown — a paragraph full of
+        // stripped citation markers takes measurably less time to read aloud.
+        _sentences.indices.mapTo(_baseDurationsMs) { estimateSentenceDurationMs(spokenOrVerbatim(it)) }
         rebuildTimeline()
     }
 
     fun clear() {
         _sentences.clear()
+        _spokenSentences.clear()
         _baseDurationsMs.clear()
         _sentenceStartsMs.clear()
+        _sectionStarts.clear()
+        _sectionTitles.clear()
         _totalDurationMs = 0L
         language = null
         pageUrl = null
@@ -118,8 +154,42 @@ object PlaybackDataRepository {
     fun getSentence(index: Int): String? =
         if (index in _sentences.indices) _sentences[index] else null
 
+    /** The text the TTS engine should speak for [index] — the cleaned form when
+     *  one was supplied, otherwise the verbatim sentence. */
+    fun getSpokenSentence(index: Int): String? =
+        if (index in _sentences.indices) spokenOrVerbatim(index) else null
+
+    private fun spokenOrVerbatim(index: Int): String =
+        _spokenSentences.getOrNull(index)?.takeIf { it.isNotBlank() } ?: _sentences[index]
+
     fun getSentenceStartMs(index: Int): Long =
         if (index in _sentenceStartsMs.indices) _sentenceStartsMs[index] else 0L
+
+    /** True when [index] is the first sentence of a page section (a heading). */
+    fun isSectionStart(index: Int): Boolean = _sectionStarts.binarySearch(index) >= 0
+
+    /** First section starting after [from], or null at the last section. */
+    fun nextSectionStart(from: Int): Int? = _sectionStarts.firstOrNull { it > from }
+
+    /** Last section starting before [from], or null when already in the first. */
+    fun previousSectionStart(from: Int): Int? = _sectionStarts.lastOrNull { it < from }
+
+    /** Heading text of the section [index] falls in, or null before the first
+     *  heading (page intros routinely start with body text). */
+    fun sectionTitleAt(index: Int): String? {
+        val at = _sectionStarts.indexOfLast { it <= index }
+        return if (at >= 0) _sectionTitles.getOrNull(at)?.takeIf { it.isNotBlank() } else null
+    }
+
+    /** Estimated 1× reading time from [index] to the end of the page. Persisted
+     *  with the reading position so the library can show "11 min left" for a
+     *  page that isn't currently loaded; divide by the speech rate to display. */
+    fun baseRemainingMsFrom(index: Int): Long {
+        if (index >= _baseDurationsMs.size) return 0L
+        var sum = 0L
+        for (i in index.coerceAtLeast(0) until _baseDurationsMs.size) sum += _baseDurationsMs[i]
+        return sum
+    }
 
     /** Sentence index whose predicted span contains [positionMs]. */
     fun indexAtPositionMs(positionMs: Long): Int {
