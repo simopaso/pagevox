@@ -84,7 +84,8 @@ Debugging lesson from that bug: the failing logcat showed the *same PID* through
 
 ## Conventions
 
-- **Commits**: imperative subject (~50 chars), then a wrapped body explaining *why* and what the symptom was, not just what changed. Existing history is a good template. Include the trailers Claude Code adds (`Co-Authored-By:` / `Claude-Session:`).
+- **Commits**: imperative subject (~50 chars), then a wrapped body explaining *why* and what the symptom was, not just what changed. Existing history is a good template.
+- **No Claude trailers.** Do *not* add the `Co-Authored-By:` / `Claude-Session:` lines Claude Code appends by default — the author asked for them to be left off (2026-08-30). Commit `0c60c7d` carries them because it predates that decision and was already pushed; leave it alone rather than rewriting published history.
 - **Comments**: this codebase is heavily commented with rationale ("why", not "what"), especially around lifecycle and position handling. Match that density — when you fix a subtle bug, leave the explanation behind.
 - **Don't commit until the user has device-tested the change**, unless they say otherwise.
 - Keep `README.md` in sync when features or the architecture table change.
