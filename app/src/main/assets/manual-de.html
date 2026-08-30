@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<!--
+  German user manual. Translation of manual.html, which is the source of
+  truth — change that first, then bring the translations along.
+
+  Menu and button names here must match values-de/strings.xml exactly, or the
+  instructions send the reader looking for wording that isn't on screen. Uses
+  the informal "du" throughout, like the German UI strings.
+
+  The lang attribute below is load-bearing: PageVox reads it to pick a matching
+  TTS voice, so this file is narrated by a German voice automatically.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>PageVox Handbuch</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5a5a66;
+    --rule: #dcdce4;
+    --accent: #3d5afe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131316;
+      --fg: #e5e2e6;
+      --muted: #a9a6ae;
+      --rule: #34343c;
+      --accent: #b9c3ff;
+    }
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Roboto", sans-serif;
+    line-height: 1.65;
+    margin: 0 auto;
+    max-width: 44rem;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin: 0 0 0.25rem;
+  }
+  h2 {
+    border-top: 1px solid var(--rule);
+    font-size: 1.25rem;
+    line-height: 1.3;
+    margin: 2.25rem 0 0.5rem;
+    padding-top: 1.25rem;
+  }
+  p, li { font-size: 1.05rem; }
+  ul { padding-left: 1.35rem; }
+  li { margin: 0.4rem 0; }
+  .lead {
+    color: var(--muted);
+    font-size: 1.15rem;
+  }
+  .tip {
+    border-left: 3px solid var(--accent);
+    margin: 1.25rem 0;
+    padding: 0.1rem 0 0.1rem 1rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>PageVox Handbuch</h1>
+
+<p class="lead">PageVox ist ein Webbrowser, der Seiten laut vorliest. Öffne eine Seite, drücke auf Wiedergabe, und dein Gerät spricht den Text, während du zuhörst — mit eingeschaltetem Bildschirm, mit der App im Hintergrund oder mit gesperrtem Telefon in der Tasche.</p>
+
+<h2>Gleich ausprobieren</h2>
+
+<p>Du liest dieses Handbuch in PageVox, du kannst es dir also genauso gut anhören. Drücke unten auf dem Bildschirm auf die runde Wiedergabetaste. Die App liest diese Seite von oben vor, hebt jeden Satz beim Sprechen hervor und scrollt mit dir mit.</p>
+
+<p>Ein erneuter Druck auf dieselbe Taste pausiert. Alles, was unten beschrieben wird, kannst du beim Durchgehen auf dieser Seite ausprobieren.</p>
+
+<h2>Eine Seite öffnen</h2>
+
+<p>Die Leiste ganz oben ist die Adressleiste. Gib eine Webadresse ein und drücke auf der Tastatur auf Los. Sieht das Eingegebene nicht nach einer Adresse aus, behandelt PageVox es stattdessen als Websuche.</p>
+
+<p>Während du tippst, schlägt PageVox bereits besuchte Seiten vor und vergleicht dabei sowohl die Adresse als auch den Seitentitel. Tippe auf einen Vorschlag, um direkt dorthin zu gelangen.</p>
+
+<p>Du kannst Seiten auch aus anderen Apps an PageVox senden. Nutze die Teilen-Schaltfläche in deinem Browser, deiner Nachrichten-App oder deiner E-Mail-App und wähle PageVox aus der Liste. PageVox lässt sich außerdem als die App festlegen, die Weblinks öffnet, sodass ein irgendwo auf dem Gerät angetippter Link hier landet und bereit zum Vorlesen ist.</p>
+
+<h2>Eine Seite vorlesen lassen</h2>
+
+<p>Die runde Taste unten in der Mitte startet und stoppt das Vorlesen. Beim ersten Druck auf einer neuen Seite holt PageVox den Text aus der Seite, teilt ihn in Sätze und beginnt zu sprechen.</p>
+
+<p>Das Vorlesen setzt normalerweise dort ein, wo du aufgehört hast. Auf einer nie geöffneten Seite ist das ganz oben. Auf einer bereits gelesenen Seite ist es der Satz, bei dem du stehen geblieben bist, auch wenn das Tage her ist.</p>
+
+<div class="tip">
+<p>Wenn überhaupt kein Ton zu hören ist, ist auf deinem Gerät möglicherweise noch keine Sprachausgabe eingerichtet. Siehe den Abschnitt zur Fehlersuche am Ende dieses Handbuchs.</p>
+</div>
+
+<h2>Bei einem bestimmten Satz beginnen</h2>
+
+<p>Tippe auf einen beliebigen Satz auf der Seite, und PageVox liest genau dort weiter. Das funktioniert auf gewöhnlichen Webseiten ebenso wie in reinen Textdateien. Tippst du auf etwas, das kein lesbarer Text ist, etwa ein Bild oder einen leeren Rand, passiert nichts und die aktuelle Leseposition bleibt unverändert.</p>
+
+<p>Über den Tasten liegt ein Regler über die gesamte Bildschirmbreite. Ziehe ihn, um dich durch die Seite zu bewegen. Während du ziehst, wird der Satz, bei dem du landen würdest, direkt über dem Regler angezeigt, und die Seite scrollt dorthin. Lässt du los, beginnt das Vorlesen bei diesem Satz.</p>
+
+<p>Rechts neben der Vorschau siehst du, bei welchem Satz du bist und wie viele es insgesamt sind.</p>
+
+<h2>Navigieren beim Zuhören</h2>
+
+<p>Die beiden Pfeiltasten links und rechts der Wiedergabetaste springen einen Satz zurück und vor. Das ist der schnellste Weg, einen Satz noch einmal zu hören.</p>
+
+<p>Halte eine der beiden gedrückt, um stattdessen einen ganzen Abschnitt zu überspringen. Ein Abschnitt ist eine Überschrift auf der Seite, in einem langen Artikel bewegt dich das also von Kapitel zu Kapitel. Das Telefon vibriert kurz, um den langen Druck zu bestätigen.</p>
+
+<p>Auf Seiten mit Überschriften erscheinen kleine Markierungen entlang des Reglers dort, wo jeder Abschnitt beginnt, und die Überschrift, in der du dich gerade befindest, steht über der Satzvorschau. Beginnt ein neuer Abschnitt, legt PageVox vor der Überschrift eine kurze Pause ein, damit sie wie ein Kapitelwechsel klingt und nicht wie ein weiterer Absatz.</p>
+
+<h2>Im Hintergrund zuhören</h2>
+
+<p>Das Vorlesen läuft weiter, wenn du die App verlässt oder den Bildschirm ausschaltest. Es erscheint eine Benachrichtigung mit Tasten für Wiedergabe, Pause und Springen, und dieselben Bedienelemente zeigt auch der Sperrbildschirm. Der Fortschrittsbalken dort folgt deiner Position in der Seite.</p>
+
+<p>Du kannst diesen Fortschrittsbalken ziehen, um dich durch die Seite zu bewegen, ohne das Telefon zu entsperren. Deine Position wird laufend gespeichert, sodass das Vorlesen selbst nach einer Stunde pausiert in der Tasche beim richtigen Satz weitergeht.</p>
+
+<h2>Lesegeschwindigkeit und Stimme</h2>
+
+<p>Öffne unten rechts das Menü, die Schaltfläche mit den drei Punkten. Unter Lesegeschwindigkeit kannst du zwischen einer langsamen Einstellung mit 0,8-facher Geschwindigkeit und doppelter Geschwindigkeit wählen. Die Änderung greift beim nächsten Satz, ohne das Laufende zu unterbrechen.</p>
+
+<p>PageVox verwendet die Sprachstimme, die auf deinem Gerät eingerichtet ist. Gibt eine Seite an, in einer anderen Sprache verfasst zu sein, wechselt PageVox automatisch zu einer Stimme für diese Sprache und danach wieder zurück.</p>
+
+<p>Willst du für alles eine bestimmte Stimme festlegen, öffne im selben Menü die Einstellungen und wähle sie unter Vorlesestimme. Eine hier gewählte Stimme wird immer verwendet, unabhängig von der Sprache der Seite. Wähle Systemstandard, um zum automatischen Verhalten zurückzukehren.</p>
+
+<h2>Auf dem Bildschirm mitlesen</h2>
+
+<p>Beim Vorlesen wird der aktuelle Satz auf der Seite hervorgehoben und ins Bild gescrollt, wie beim Karaoke. So lässt sich leicht mitlesen oder kurz nachschauen, wo die Stimme gerade ist.</p>
+
+<p>Möchtest du lieber zuhören, ohne dass sich die Seite bewegt, schalte Mitlesen im Menü aus. Das Vorlesen läuft genau wie zuvor weiter, nur ohne Hervorhebung und Scrollen.</p>
+
+<h2>Lesemodus</h2>
+
+<p>Viele Webseiten sind in Menüs, Werbung und Fußzeilen eingepackt, und das alles vorgelesen zu bekommen ist ermüdend. Schalte im Menü den Lesemodus ein, dann engt PageVox die Seite auf den Artikel selbst ein, sowohl auf dem Bildschirm als auch beim Vorlesen.</p>
+
+<p>Das Ein- oder Ausschalten des Lesemodus holt den Seitentext neu, das Vorlesen hält also an und du drückst erneut auf Wiedergabe, um mit der neuen Einstellung zu beginnen.</p>
+
+<h2>Die Seite besser lesbar machen</h2>
+
+<p>Das Menü enthält eine Textgrößensteuerung mit einer Minus- und einer Plus-Taste. Die Größe wird gespeichert und gilt für jede Seite.</p>
+
+<p>In den Einstellungen kannst du außerdem den dunklen Modus für Webseiten einschalten. Er gibt Websites ein dunkles Erscheinungsbild, die selbst keines anbieten, einschließlich reiner Textdateien.</p>
+
+<h2>Lesezeichen, Verlauf und dort weitermachen, wo du aufgehört hast</h2>
+
+<p>Der Stern rechts in der Adressleiste speichert die aktuelle Seite als Lesezeichen. Tippe erneut darauf, um das Lesezeichen zu entfernen.</p>
+
+<p>Wähle im Menü Lesezeichen und Verlauf, um deine Bibliothek zu öffnen. Sie hat drei Reiter. Weiterlesen führt die Seiten auf, die du begonnen, aber nicht beendet hast, mit dem erreichten Fortschritt und ungefähr der verbleibenden Zeit bei deiner aktuellen Lesegeschwindigkeit. Lesezeichen führt die gespeicherten Seiten auf. Verlauf führt die zuletzt besuchten Seiten auf, die neuesten zuerst, und hat eine Schaltfläche zum Löschen.</p>
+
+<p>Tippe auf eine beliebige Seite in der Bibliothek, um sie zu öffnen. Sie setzt bei dem Satz fort, bei dem du aufgehört hast.</p>
+
+<h2>Bei Websites anmelden</h2>
+
+<p>PageVox hält dich angemeldet wie jeder andere Browser auch. Melde dich einmal an, und die Website erkennt dich wieder, auch nachdem du die App geschlossen hast.</p>
+
+<p>Manche Websites verstecken ihre Anmeldeschaltfläche hinter einem kleinen Pop-up-Fenster. PageVox hat keine Tabs, also macht es aus solchen Pop-ups einen gewöhnlichen Seitenwechsel im selben Fenster und bringt dich danach zur Website zurück.</p>
+
+<p>Einige Seiten werden vom Webserver selbst geschützt statt von einem Anmeldeformular. Sie fragen in einem kleinen Feld nach Benutzername und Passwort, bevor die Seite erscheint. PageVox bietet an, sich das Eingegebene zu merken, sodass eine geschützte Website nur einmal fragt.</p>
+
+<p>Einige Anmeldedienste, darunter Google, akzeptieren keine Anmeldungen aus dem Browser einer anderen App heraus. Das ist ihre Entscheidung, und kein so gebauter Browser kann das umgehen. Lehnt ein Dienst die Anmeldung ab, nutze den eigenen Benutzernamen und das Passwort der Website, sofern angeboten.</p>
+
+<p>Um dich überall auf einmal abzumelden, öffne die Einstellungen und wähle Cookies löschen und abmelden. Deine Lesezeichen, dein Verlauf und deine Lesepositionen bleiben erhalten.</p>
+
+<h2>Deine Startseite</h2>
+
+<p>Das Menü enthält den Eintrag Startseite, der dich zu deiner Startseite bringt. Bis du eine eigene wählst, ist das dieses Handbuch.</p>
+
+<p>Um eine eigene festzulegen, öffne im Menü die Einstellungen, gib eine Adresse in das Feld Adresse der Startseite ein und drücke auf Speichern. Möchtest du das Handbuch je wieder als Startseite, leere dieses Feld und speichere es leer.</p>
+
+<p>Das Menü hat außerdem den Eintrag Eine Ebene nach oben, der den letzten Teil der aktuellen Webadresse entfernt. Das ist nützlich, um aus einem Dateiordner nach oben zu gelangen.</p>
+
+<h2>Dieses Handbuch wiederfinden</h2>
+
+<p>Was auch immer du als Startseite festlegst, dieses Handbuch bleibt einen Tipp entfernt. Öffne das Menü mit den drei Punkten und wähle Handbuch.</p>
+
+<h2>Wenn etwas nicht funktioniert</h2>
+
+<p>Wenn beim Druck auf Wiedergabe überhaupt kein Ton kommt, ist auf deinem Gerät möglicherweise keine Sprachausgabe installiert oder eingerichtet. Wähle im Menü Einstellungen für Sprachausgabe, um die Android-Einstellungen für Text-in-Sprache zu öffnen, wo du eine Stimme installieren, eine Engine wählen und sie testen kannst. Auf den meisten Geräten finden sich diese Einstellungen auch unter Bedienungshilfen.</p>
+
+<p>Wird nur ein Teil einer Seite vorgelesen, ist der Rest vermutlich kein gewöhnlicher Text. PageVox liest Absätze, Überschriften, Listenpunkte und vorformatierten Text. In Bilder gezeichneter Text kann nicht gelesen werden.</p>
+
+<p>Passiert beim Antippen eines Satzes nichts, hat der Tipp keinen Text getroffen, den PageVox erkennt. Versuche, in die Mitte einer Zeile zu tippen statt ganz an den Bildschirmrand, oder nutze den Regler.</p>
+
+<p>Wird eine Seite in der falschen Sprache oder Aussprache vorgelesen, gibt die Seite womöglich die falsche Sprache an. Wähle in den Einstellungen eine bestimmte Stimme, um das zu übersteuern.</p>
+
+<h2>Deine Daten</h2>
+
+<p>Dein Verlauf, deine Lesezeichen, deine Lesepositionen und deine Einstellungen werden auf diesem Gerät gespeichert, ebenso die Cookies, die dich bei Websites angemeldet halten. Die Einstellungen enthalten außerdem einen Link zur Datenschutzerklärung und zu den Lizenzen der Open-Source-Software, mit der PageVox gebaut ist.</p>
+
+<h2>Über</h2>
+
+<p>PageVox ist ein Open-Source-Projekt, veröffentlicht unter der Apache License, Version 2.0. Danke, dass du es nutzt.</p>
+
+<p>Die App ist kostenlos und bleibt es. Nichts steht hinter einer Bezahlung, und es gibt keine Werbung. Möchtest du die Arbeit trotzdem unterstützen, findet sich im Menü der Eintrag Entwicklung unterstützen, der eine Zahlungsseite in deinem gewohnten Browser öffnet. Er ist völlig freiwillig und schaltet nichts frei.</p>
+
+</main>
+</body>
+</html>

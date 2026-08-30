@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<!--
+  The built-in user manual. Shipped as an asset and opened as
+  file:///android_asset/manual.html (see MANUAL_URL in SettingsRepository).
+
+  This page is read by PageVox itself, so it is written to be listened to as
+  much as to be looked at:
+    - Content sits in semantic <p>, <h2> and <li> elements, because that is what
+      the extraction script in PageScripts.kt collects. Text in a <div> alone
+      would be invisible to the reader.
+    - Every <h2> becomes a section, which is what puts the tick marks on the
+      scrubber and gives long-press skip somewhere to jump to. Keep them.
+    - Sentences are written out in full, and symbols a speech engine mangles
+      (arrows, the multiplication sign, the three-dot menu glyph) are spelled
+      out as words instead.
+    - Everything is inline and offline: no fonts, scripts or images from the
+      network, so the manual works on a plane.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>PageVox User Manual</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1b1b1f;
+    --muted: #5a5a66;
+    --rule: #dcdce4;
+    --accent: #3d5afe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131316;
+      --fg: #e5e2e6;
+      --muted: #a9a6ae;
+      --rule: #34343c;
+      --accent: #b9c3ff;
+    }
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Roboto", sans-serif;
+    line-height: 1.65;
+    margin: 0 auto;
+    max-width: 44rem;
+    padding: 1.5rem 1.25rem 4rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin: 0 0 0.25rem;
+  }
+  h2 {
+    border-top: 1px solid var(--rule);
+    font-size: 1.25rem;
+    line-height: 1.3;
+    margin: 2.25rem 0 0.5rem;
+    padding-top: 1.25rem;
+  }
+  p, li { font-size: 1.05rem; }
+  ul { padding-left: 1.35rem; }
+  li { margin: 0.4rem 0; }
+  .lead {
+    color: var(--muted);
+    font-size: 1.15rem;
+  }
+  .tip {
+    border-left: 3px solid var(--accent);
+    margin: 1.25rem 0;
+    padding: 0.1rem 0 0.1rem 1rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>PageVox User Manual</h1>
+
+<p class="lead">PageVox is a web browser that reads pages out loud. Open a page, press play, and your device speaks the text while you listen — with the screen on, with the app in the background, or with the phone locked in your pocket.</p>
+
+<h2>Try it right now</h2>
+
+<p>You are reading this manual inside PageVox, so you can hear it instead. Press the round play button at the bottom of the screen. The app will read this page from the top, highlight each sentence as it is spoken, and scroll along with you.</p>
+
+<p>Press the same button again to pause. Everything described below can be tried on this page as you go.</p>
+
+<h2>Opening a page</h2>
+
+<p>The bar across the top is the address bar. Type a web address and press Go on the keyboard. If what you type does not look like an address, PageVox treats it as a web search instead.</p>
+
+<p>As you type, PageVox suggests pages you have visited before, matching on both the address and the page title. Tap a suggestion to go straight there.</p>
+
+<p>You can also send pages to PageVox from other apps. Use the share button in your browser, your news reader or your email app and choose PageVox from the list. PageVox can also be set as the app that opens web links, so a link tapped anywhere on the device opens here ready to be read.</p>
+
+<h2>Reading a page aloud</h2>
+
+<p>The round button at the bottom centre starts and stops reading. The first time you press it on a new page, PageVox reads the text out of the page, splits it into sentences, and starts speaking.</p>
+
+<p>Reading normally starts wherever you left off. On a page you have never opened, that is the top. On a page you have read before, it is the sentence you stopped at, even if that was days ago.</p>
+
+<div class="tip">
+<p>If nothing is spoken at all, your device may have no speech engine set up yet. See the troubleshooting section at the end of this manual.</p>
+</div>
+
+<h2>Starting from a particular sentence</h2>
+
+<p>Tap any sentence on the page and PageVox starts reading from exactly there. This works on ordinary web pages and on plain text files alike. If you tap something that is not readable text, such as an image or a blank margin, nothing happens and the current reading position is left alone.</p>
+
+<p>Above the buttons there is a slider that runs the whole width of the screen. Drag it to move through the page. As you drag, the sentence you would land on is previewed just above the slider, and the page scrolls to show it. Let go and reading starts from that sentence.</p>
+
+<p>To the right of the preview you can see which sentence you are on and how many there are in total.</p>
+
+<h2>Moving around while listening</h2>
+
+<p>The two arrow buttons either side of the play button skip backwards and forwards one sentence at a time. This is the quickest way to hear a sentence again.</p>
+
+<p>Press and hold either of those buttons to jump a whole section instead. A section is a heading on the page, so on a long article this moves you from chapter to chapter. The phone gives a short vibration to confirm the long press.</p>
+
+<p>On pages that have headings, small marks appear along the slider showing where each section begins, and the heading you are currently inside is shown above the sentence preview. When a new section starts, PageVox leaves a short pause before reading the heading, so it sounds like a chapter break rather than another paragraph.</p>
+
+<h2>Listening in the background</h2>
+
+<p>Reading continues when you leave the app or turn off the screen. A notification appears with play, pause and skip controls, and the same controls show up on the lock screen. The progress bar there follows your position through the page.</p>
+
+<p>You can drag that progress bar to move through the page without unlocking the phone. Your position is saved continuously, so even if the phone sits paused in your pocket for an hour, reading picks up from the right sentence.</p>
+
+<h2>Reading speed and voice</h2>
+
+<p>Open the menu at the bottom right, the button with three dots. Under Reading speed you can choose from a slow setting at 0.8 times normal pace up to double speed. The change takes effect at the next sentence, without interrupting what is being read.</p>
+
+<p>PageVox uses the speech voice your device is set up with. If a page declares that it is written in another language, PageVox switches to a voice for that language automatically, then switches back.</p>
+
+<p>To pick one specific voice for everything, open Settings from the same menu and choose it under Reading voice. A voice chosen here is always used, whatever language the page is in. Choose System default to go back to automatic behaviour.</p>
+
+<h2>Following along on screen</h2>
+
+<p>While reading, the current sentence is highlighted on the page and scrolled into view, karaoke style. This makes it easy to read along, or to glance down and see where the voice has got to.</p>
+
+<p>If you would rather listen without the page moving, turn off Follow along in the menu. Reading continues exactly as before, just without the highlight and the scrolling.</p>
+
+<h2>Reader mode</h2>
+
+<p>Many web pages are wrapped in menus, adverts and footers, and reading all of that aloud is tiresome. Turn on Reader mode in the menu and PageVox narrows the page down to the article itself, both on screen and in what it reads.</p>
+
+<p>Switching Reader mode on or off re-reads the page text, so reading stops and you press play again to start with the new setting.</p>
+
+<h2>Making the page easier to read</h2>
+
+<p>The menu has a text size control with a minus and a plus button. The size is remembered and applies to every page.</p>
+
+<p>In Settings you can also turn on dark mode for web pages. This gives a dark appearance to sites that do not offer one themselves, including plain text files.</p>
+
+<h2>Bookmarks, history and continuing where you left off</h2>
+
+<p>The star at the right of the address bar saves the current page as a bookmark. Tap it again to remove the bookmark.</p>
+
+<p>Choose Bookmarks and history from the menu to open your library. It has three tabs. Continue lists the pages you have started but not finished, with how far through you are and roughly how long is left at your current reading speed. Bookmarks lists the pages you saved. History lists recent pages, newest first, and has a button to clear it.</p>
+
+<p>Tap any page in the library to open it. It resumes at the sentence you stopped on.</p>
+
+<h2>Signing in to websites</h2>
+
+<p>PageVox keeps you signed in the way any browser does. Log in once and the site remembers you, including after you close the app.</p>
+
+<p>Some sites put their sign-in button behind a small popup window. PageVox has no tabs, so it turns those popups into an ordinary page change in the same window, and brings you back to the site afterwards.</p>
+
+<p>A few pages are protected by the web server itself rather than by a login form. Those ask for a username and password in a small box before the page appears. PageVox offers to remember what you type, so a protected site only asks once.</p>
+
+<p>Some sign-in providers, Google among them, refuse to accept logins from inside another app's browser. This is their decision and no browser built this way can work around it. If a provider rejects the sign-in, use a site's own username and password if it offers one.</p>
+
+<p>To sign out of everything at once, open Settings and choose Clear cookies and sign out. Your bookmarks, history and reading positions are kept.</p>
+
+<h2>Your home page</h2>
+
+<p>The menu has a Home entry that returns you to your home page. Until you choose one of your own, that home page is this manual.</p>
+
+<p>To set your own, open Settings from the menu and type an address into the Home Page URL field, then press Save. If you ever want the manual back as your home page, clear that field and save it empty.</p>
+
+<p>The menu also has an Up one level entry, which drops the last part of the current web address. This is useful for moving up out of a folder of files.</p>
+
+<h2>Finding this manual again</h2>
+
+<p>Whatever you set as your home page, this manual stays one tap away. Open the menu with the three dots and choose User manual.</p>
+
+<h2>If something does not work</h2>
+
+<p>If pressing play produces no sound at all, your device may not have a speech engine installed or set up. Choose TTS voice settings from the menu to open the Android text-to-speech settings, where you can install a voice, choose an engine and test it. On most devices these settings also live under Accessibility.</p>
+
+<p>If only part of a page is read, the rest is probably not ordinary text. PageVox reads paragraphs, headings, list items and preformatted text. Text drawn inside images cannot be read.</p>
+
+<p>If tapping a sentence does nothing, the tap did not land on text that PageVox recognises. Try tapping in the middle of a line rather than at the very edge of the screen, or use the slider instead.</p>
+
+<p>If a page reads in the wrong language or accent, the page may be declaring the wrong language. Choose a specific voice in Settings to override it.</p>
+
+<h2>Your data</h2>
+
+<p>Your history, bookmarks, reading positions and settings are stored on this device, as are the cookies that keep you signed in to websites. Settings also has a link to the privacy policy and to the licences of the open-source software PageVox is built with.</p>
+
+<h2>About</h2>
+
+<p>PageVox is an open-source project released under the Apache License, version 2.0. Thank you for using it.</p>
+
+<p>The app is free and always will be. Nothing is behind a payment, and there are no adverts. If you would like to support the work anyway, the menu has a Support development entry that opens a payment page in your normal browser. It is entirely optional and unlocks nothing.</p>
+
+</main>
+</body>
+</html>

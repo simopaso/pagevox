@@ -8,7 +8,10 @@ import org.json.JSONTokener
 private const val TAG = "PageScripts"
 
 // Extracts innerText of semantic elements (falls back to body for .txt pages).
-// Returns a JSON object string {lang, texts} via evaluateJavascript.
+// Returns a JSON object string {lang, texts, tags} via evaluateJavascript, where
+// tags[i] is the lowercased tag name of the element texts[i] came from. The tag
+// is what makes heading-aware navigation possible: h1–h6 blocks become section
+// boundaries for the scrubber's tick marks and long-press section skip.
 //
 // When [readerMode] is on, extraction is scoped to the main article: it picks
 // <article>/<main>/[role=main], or the densest text container, and skips
@@ -34,15 +37,16 @@ internal fun extractTextJs(readerMode: Boolean) = """
     root = root || document.body;
     var skip = 'nav, header, footer, aside, [role=navigation], [role=banner], [role=complementary]';
     var els = root.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,pre');
-    var texts = [];
+    var texts = [], tags = [];
     if (els.length === 0) {
+        // Plain-text document: one undifferentiated block, so no headings.
         var b = (root.innerText || '').trim();
-        if (b) texts.push(b);
+        if (b) { texts.push(b); tags.push(''); }
     } else {
         for (var i = 0; i < els.length; i++) {
             if (reader && els[i].closest(skip)) continue;
             var t = (els[i].innerText || '').trim();
-            if (t) texts.push(t);
+            if (t) { texts.push(t); tags.push(els[i].tagName.toLowerCase()); }
         }
     }
     // Declared content language: <html lang> first, then a content-language meta.
@@ -51,7 +55,7 @@ internal fun extractTextJs(readerMode: Boolean) = """
         var m = document.querySelector('meta[http-equiv="content-language" i]');
         if (m && m.content) lang = m.content.trim().split(',')[0].trim();
     }
-    return JSON.stringify({ lang: lang, texts: texts });
+    return JSON.stringify({ lang: lang, texts: texts, tags: tags });
 })();
 """.trimIndent()
 
@@ -235,14 +239,25 @@ internal val CLEAR_HIGHLIGHT_JS = """
 (function(){ try { if (window.CSS && CSS.highlights) CSS.highlights.delete('$HIGHLIGHT_NAME'); } catch (e) {} })();
 """.trimIndent()
 
-internal fun extractTexts(webView: WebView?, readerMode: Boolean, onResult: (lang: String?, texts: List<String>) -> Unit) {
+/** One extracted block of page text and the element it came from. */
+data class PageBlock(val text: String, val tag: String) {
+    /** h1–h6 — the blocks that open a new section of the page. */
+    val isHeading: Boolean get() = tag.length == 2 && tag[0] == 'h' && tag[1] in '1'..'6'
+}
+
+internal fun extractTexts(webView: WebView?, readerMode: Boolean, onResult: (lang: String?, blocks: List<PageBlock>) -> Unit) {
     webView?.evaluateJavascript(extractTextJs(readerMode)) { result ->
         try {
             val jsonStr = JSONTokener(result).nextValue() as String
             val obj = JSONObject(jsonStr)
             val lang = obj.optString("lang").ifBlank { null }
             val arr = obj.getJSONArray("texts")
-            onResult(lang, (0 until arr.length()).map { arr.getString(it) })
+            // tags is absent only if a cached script from an older build ran;
+            // treat a missing entry as an untagged block rather than failing.
+            val tags = obj.optJSONArray("tags")
+            onResult(lang, (0 until arr.length()).map { i ->
+                PageBlock(arr.getString(i), tags?.optString(i).orEmpty())
+            })
         } catch (e: Exception) {
             Log.e(TAG, "Text extraction failed", e)
         }

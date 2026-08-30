@@ -82,4 +82,19 @@ class SentenceSplitterTest {
             splitIntoSentences("  One.   Two.  ")
         )
     }
+
+    @Test
+    fun rangesPointAtTheSentencesInTheSourceString() {
+        // The range form is what lets a sentence found in narration-cleaned text
+        // be recovered verbatim from the original — see NarrationText.
+        val text = "  One.   Two.  "
+        val ranges = splitIntoSentenceRanges(text)
+        assertEquals(listOf(2..5, 9..12), ranges)
+        assertEquals(listOf("One.", "Two."), ranges.map { text.substring(it.first, it.last + 1) })
+    }
+
+    @Test
+    fun rangesSkipWhitespaceOnlyPieces() {
+        assertEquals(emptyList<IntRange>(), splitIntoSentenceRanges("   "))
+    }
 }

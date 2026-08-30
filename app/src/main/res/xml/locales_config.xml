@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Declares the languages PageVox ships, which is what puts an app-specific
+     "Language" entry in Android 13+ system settings. Without it the app always
+     follows the system language and the user has no way to override it just for
+     this app. Keep in sync with the values-* resource folders. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="fi" />
+    <locale android:name="sv" />
+    <locale android:name="de" />
+    <locale android:name="fr" />
+</locale-config>

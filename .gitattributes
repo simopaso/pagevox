@@ -1,0 +1,9 @@
+# Keep the Gradle wrapper script LF so it stays runnable on Linux/macOS
+# even when checked out on Windows.
+gradlew text eol=lf
+*.sh text eol=lf
+gradlew.bat text eol=crlf
+*.jar binary
+*.apk binary
+*.dm binary
+*.gz binary

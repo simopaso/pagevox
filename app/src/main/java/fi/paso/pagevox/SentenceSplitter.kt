@@ -30,21 +30,38 @@ private val ABBREVIATIONS = setOf(
  *  - the next character is lowercase (sentences don't start lowercase).
  * Pieces are trimmed; blank pieces are dropped.
  */
-internal fun splitIntoSentences(text: String): List<String> {
+internal fun splitIntoSentences(text: String): List<String> =
+    splitIntoSentenceRanges(text).map { text.substring(it.first, it.last + 1) }
+
+/**
+ * As [splitIntoSentences], but returns the (trimmed, non-blank) character ranges
+ * of the sentences instead of the strings. Callers that speak a cleaned form of
+ * the text while displaying the verbatim form need the offsets to map one back
+ * onto the other — see [cleanForNarration].
+ */
+internal fun splitIntoSentenceRanges(text: String): List<IntRange> {
     if (text.isBlank()) return emptyList()
-    val sentences = mutableListOf<String>()
+    val ranges = mutableListOf<IntRange>()
     var start = 0
     for (match in SENTENCE_BOUNDARY.findAll(text)) {
         val before = text.substring(start, match.range.first)
         val next = text.getOrNull(match.range.last + 1)
         if (!isSentenceBoundary(before, next)) continue
-        val piece = before.trim()
-        if (piece.isNotBlank()) sentences.add(piece)
+        addTrimmed(text, start, match.range.first, ranges)
         start = match.range.last + 1
     }
-    val tail = text.substring(start).trim()
-    if (tail.isNotBlank()) sentences.add(tail)
-    return sentences
+    addTrimmed(text, start, text.length, ranges)
+    return ranges
+}
+
+/** Append [from,toExclusive) to [out] with the outer whitespace shaved off,
+ *  skipping it entirely when nothing but whitespace remains. */
+private fun addTrimmed(text: String, from: Int, toExclusive: Int, out: MutableList<IntRange>) {
+    var s = from
+    var e = toExclusive
+    while (s < e && text[s].isWhitespace()) s++
+    while (e > s && text[e - 1].isWhitespace()) e--
+    if (e > s) out.add(s until e)
 }
 
 private fun isSentenceBoundary(before: String, next: Char?): Boolean {
