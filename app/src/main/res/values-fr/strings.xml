@@ -36,6 +36,12 @@
     <string name="state_selected">Sélectionné</string>
     <string name="open_with">Ouvrir avec</string>
 
+    <!-- Panneaux latéraux -->
+    <string name="panel_contents">Sommaire</string>
+    <string name="panel_close">Fermer le panneau</string>
+    <string name="contents_no_sections">Cette page ne contient aucun titre</string>
+    <string name="contents_nothing_loaded">Appuyez sur lecture — les sections de la page apparaîtront ici</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Quitter PageVox ?</string>
     <string name="exit_message">Il n\'y a pas de page précédente vers laquelle revenir. Fermer l\'application ?</string>

@@ -30,6 +30,7 @@
 - **Sites that need a login** — cookies (including third-party, for single sign-on), popup sign-in buttons resolved into the same window, HTTP Basic/Digest credential prompts with optional saving, links to other apps handed to the system, and a "Clear cookies and sign out" action.
 - **Share & open-with** — send text or links from other apps to PageVox, or set it as a handler for `http`/`https` links.
 - **Resumes where you left off** — the last page and reading position are restored on launch, and every page in your history remembers its own reading position.
+- **Big screens and foldables** — on an unfolded foldable, a tablet or a phone in landscape the controls move into a side rail and the page keeps the full height of the window, with the library or the page's contents available as a panel beside the page rather than on top of it. Folding, unfolding and rotating keep the page loaded and the reading position intact.
 - **Material You** — dynamic color, edge-to-edge, and light/dark theming.
 
 ## Tech stack
@@ -48,8 +49,8 @@ The app runs the UI and a media-session service in the same process, bridged by 
 | --- | --- |
 | `MainActivity.kt` | Activity: intent handling (share/open-with), MediaController connection to the service. |
 | `MainViewModel.kt` | UI state and actions: navigation, sentence splitting, reading position, settings. |
-| `MainScreen.kt` | Top-level Compose screen: scaffold, bottom controls, dialogs wiring. |
-| `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingScrubber.kt` | Individual UI components. |
+| `MainScreen.kt` | Top-level Compose screen: scaffold, the adaptive control bar/rail, side panels, dialogs wiring. |
+| `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingScrubber.kt`, `ContentsPanel.kt` | Individual UI components. |
 | `WebViewContainer.kt` | WebView host: page lifecycle, tap-to-seek, follow-along highlight, state save/restore. |
 | `PageScripts.kt` | The JavaScript injected into pages: text extraction (with the source element's tag, for sections), tap detection, reader mode, sentence highlighting. |
 | `NarrationText.kt` | Turns extracted blocks into the sentence set: cleans the text for speech and maps each cleaned sentence back to the verbatim page text it came from. |
@@ -86,7 +87,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.18**.
+Personal project, actively developed. Current version: **2.19**.
 
 ## Supporting development
 

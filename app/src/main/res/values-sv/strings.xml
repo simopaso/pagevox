@@ -34,6 +34,12 @@
     <string name="state_selected">Vald</string>
     <string name="open_with">Öppna med</string>
 
+    <!-- Sidopaneler -->
+    <string name="panel_contents">Innehåll</string>
+    <string name="panel_close">Stäng panelen</string>
+    <string name="contents_no_sections">Sidan har inga rubriker</string>
+    <string name="contents_nothing_loaded">Tryck på spela — sidans avsnitt visas här</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Avsluta PageVox?</string>
     <string name="exit_message">Det finns ingen föregående sida att gå tillbaka till. Vill du stänga appen?</string>

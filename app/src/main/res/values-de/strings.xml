@@ -36,6 +36,12 @@
     <string name="state_selected">Ausgewählt</string>
     <string name="open_with">Öffnen mit</string>
 
+    <!-- Seitenbereiche -->
+    <string name="panel_contents">Inhalt</string>
+    <string name="panel_close">Bereich schließen</string>
+    <string name="contents_no_sections">Diese Seite hat keine Überschriften</string>
+    <string name="contents_nothing_loaded">Drücke auf Wiedergabe — die Abschnitte der Seite erscheinen hier</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">PageVox beenden?</string>
     <string name="exit_message">Es gibt keine vorherige Seite, zu der du zurückkehren könntest. App schließen?</string>

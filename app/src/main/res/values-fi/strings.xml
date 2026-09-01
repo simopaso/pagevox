@@ -34,6 +34,12 @@
     <string name="state_selected">Valittu</string>
     <string name="open_with">Avaa sovelluksessa</string>
 
+    <!-- Sivupaneelit -->
+    <string name="panel_contents">Sisällys</string>
+    <string name="panel_close">Sulje paneeli</string>
+    <string name="contents_no_sections">Tällä sivulla ei ole otsikoita</string>
+    <string name="contents_nothing_loaded">Paina toista — sivun osiot ilmestyvät tähän</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Suljetaanko PageVox?</string>
     <string name="exit_message">Edellistä sivua, jolle palata, ei ole. Suljetaanko sovellus?</string>

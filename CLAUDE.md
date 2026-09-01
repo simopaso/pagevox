@@ -36,7 +36,7 @@ Workflow for a change: edit → confirm it compiles and unit tests pass → bump
 
 Every user-visible change gets a version bump in three places:
 
-1. `app/build.gradle.kts` — `versionCode` (integer, +1) and `versionName` (currently `2.18` / code `30`).
+1. `app/build.gradle.kts` — `versionCode` (integer, +1) and `versionName` (currently `2.19` / code `31`).
 2. `README.md` — the "Current version" line under *Project status*.
 3. The commit subject usually says "Bump to X.Y" when that's the main content.
 
@@ -48,7 +48,7 @@ The UI and the media-session service run **in the same process**, bridged by the
 
 - `MainActivity.kt` — intents (share / `VIEW` http(s)), `MediaController` connection.
 - `MainViewModel.kt` — all UI state and actions.
-- `MainScreen.kt`, `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingScrubber.kt` — Compose UI.
+- `MainScreen.kt`, `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingScrubber.kt`, `ContentsPanel.kt` — Compose UI.
 - `WebViewContainer.kt` — WebView lifecycle, tap-to-seek, follow-along highlight, state save/restore.
 - `PageScripts.kt` — the injected JavaScript: text extraction, tap detection, reader mode, highlighting.
 - `PlaybackService.kt` — Media3 `MediaSessionService`; owns `TextToSpeech`.
@@ -67,6 +67,7 @@ Deliberate design choices worth knowing before changing anything:
 - **The user manual is a real page, not a screen.** `app/src/main/assets/manual.html` is loaded in the WebView from `MANUAL_URL` (`file:///android_asset/manual.html`) and goes through the same extraction, splitting, tap-to-seek and highlight path as any website — which is the point: it's the default home page *and* a live demo of the reader. Keep its content in semantic `<p>`/`<h2>`/`<li>` elements (a `<div>` is invisible to the extractor), and keep it offline and inline. Assets stay reachable via `file:///android_asset` even with WebView's `allowFileAccess` off, so never enable file access to "fix" it.
 - **Sections come from the extraction tag.** `extractTextJs` returns each block's element tag; h1–h6 become section starts, which drive the scrubber ticks, the heading readout, long-press section skip, and the short silence before a heading.
 - **Playback yields to phone calls on the audio *mode*, not on audio focus** (2.18). The player carries only silence — TTS audio bypasses it — so a focus loss raises a *playback suppression reason* rather than flipping `playWhenReady`, and the engine talks straight through it unless `onPlaybackSuppressionReasonChanged` stops it. Worse, a call on a Bluetooth headset runs on the voice/SCO path and releases media focus the moment the ringtone stops, i.e. when the call is *answered*, which is how narration used to resume over the conversation. `AudioManager.mode > MODE_NORMAL` is the one signal that stays raised for the whole call (telephony and VoIP alike) and needs no permission; it is polled once a second while playing or parked mid-call. Only a pause PageVox issued itself is auto-resumed.
+- **The layout is adaptive at 600dp** (2.19). Below it: address bar, scrubber, bottom control bar. Above it (unfolded foldable, tablet, landscape phone): the same controls in the same order in a side rail, plus one optional trailing panel — library or contents, never both, since 600–900dp has room for the page and one of them. `PlaybackControls` emits its buttons from a single lambda into either container, so the two layouts cannot drift apart. Two things are load-bearing: the WebView is wrapped in `movableContentOf` so folding *moves* the composition instead of rebuilding it (otherwise the page reloads and the extracted sentences are thrown away mid-read), and `MainActivity` declares `configChanges` for the screen/orientation set so a fold doesn't recreate the activity at all. Locale is deliberately not in that list — the per-app language picker needs the recreation.
 - **Tap-to-seek resolves the exact character** under the finger via `caretRangeFromPoint`, then `MainViewModel.findSentenceIndex` matches progressively shorter probes. An unmatched tap must do nothing — never fall back to sentence 0 (that was the old bug on plain-text/`<pre>` pages).
 
 ## The reading-position trap (read this before touching resume logic)

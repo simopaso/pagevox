@@ -48,6 +48,13 @@
     <!-- Reading scrubber: current sentence out of the page total -->
     <string name="sentence_counter" translatable="false">%1$d / %2$d</string>
 
+    <!-- Side panels, shown beside the page on a wide screen (unfolded foldable,
+         tablet, landscape phone) -->
+    <string name="panel_contents">Contents</string>
+    <string name="panel_close">Close panel</string>
+    <string name="contents_no_sections">This page has no headings</string>
+    <string name="contents_nothing_loaded">Press play — the page\'s sections appear here</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Exit PageVox?</string>
     <string name="exit_message">There\'s no previous page to go back to. Close the app?</string>

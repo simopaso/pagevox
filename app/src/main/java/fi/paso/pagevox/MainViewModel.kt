@@ -48,6 +48,11 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     /** Heading of the section [index] falls in, for the scrubber readout. */
     fun sectionTitleAt(index: Int): String? = PlaybackDataRepository.sectionTitleAt(index)
 
+    /** Estimated milliseconds of reading left from [index], at 1x. The caller
+     *  divides by the speech rate — the estimates are rate-independent so they
+     *  stay valid when the user changes speed mid-page. */
+    fun remainingMsFrom(index: Int): Long = PlaybackDataRepository.baseRemainingMsFrom(index)
+
     private var initialIndex = 0
 
     // Set to the restored URL while a cold-start restore is in flight, cleared
