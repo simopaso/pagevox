@@ -26,8 +26,18 @@
         android:theme="@style/Theme.PageVox"
         tools:targetApi="34">
         <!-- The main activity of the application. -->
+        <!-- Handle the size and orientation changes ourselves rather than being
+             recreated for them. Folding or unfolding a foldable, or rotating,
+             would otherwise tear down the activity and with it the WebView:
+             the page would reload, the scroll position and any form input would
+             be lost, and the reader would have to re-extract the page. Compose
+             re-lays-out on a configuration change regardless, and the WebView
+             handles one itself, so nothing here depends on being recreated.
+             Locale changes are deliberately NOT listed: the per-app language
+             picker must recreate the activity to pick up the new resources. -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density|keyboardHidden"
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTask"

@@ -3,6 +3,7 @@ package fi.paso.pagevox
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -44,6 +45,11 @@ private const val TAB_CONTINUE = 0
 private const val TAB_BOOKMARKS = 1
 private const val TAB_HISTORY = 2
 
+/**
+ * The library as a bottom sheet — the compact layout, where there is no room to
+ * show it beside the page. A wide layout hands the same [LibraryContent] to a
+ * side panel instead, so the two never drift apart.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibrarySheet(
@@ -57,13 +63,47 @@ fun LibrarySheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        LibraryContent(
+            continueListening = continueListening,
+            bookmarks = bookmarks,
+            history = history,
+            speechRate = speechRate,
+            onOpen = onOpen,
+            onRemoveBookmark = onRemoveBookmark,
+            onClearHistory = onClearHistory,
+            fillHeight = false
+        )
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Continue / Bookmarks / History, without a container of its own.
+ *
+ * [fillHeight] is the difference between the two hosts: in a bottom sheet the
+ * list is capped so the sheet doesn't grow to swallow the screen, while in a
+ * side panel it should take all the height it is given.
+ */
+@Composable
+fun LibraryContent(
+    continueListening: List<WebPage>,
+    bookmarks: List<WebPage>,
+    history: List<WebPage>,
+    speechRate: Float,
+    onOpen: (String) -> Unit,
+    onRemoveBookmark: (String) -> Unit,
+    onClearHistory: () -> Unit,
+    fillHeight: Boolean,
+    modifier: Modifier = Modifier
+) {
     // Open on whatever the user most likely came for: a half-finished page if
     // there is one, otherwise the bookmarks list as before.
     var tab by remember {
         mutableIntStateOf(if (continueListening.isNotEmpty()) TAB_CONTINUE else TAB_BOOKMARKS)
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    Column(modifier) {
         PrimaryTabRow(selectedTabIndex = tab) {
             Tab(selected = tab == TAB_CONTINUE, onClick = { tab = TAB_CONTINUE },
                 text = { Text(stringResource(R.string.tab_continue)) },
@@ -107,7 +147,9 @@ fun LibrarySheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 460.dp)) {
+            val listModifier =
+                if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth().heightIn(max = 460.dp)
+            LazyColumn(listModifier) {
                 items(entries, key = { it.url }) { page ->
                     ListItem(
                         headlineContent = {
@@ -144,7 +186,6 @@ fun LibrarySheet(
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -195,7 +236,7 @@ internal fun timeLeftOf(ms: Long): TimeLeft {
 
 /** "18 min left", "1 h 5 min left", in the user's language. */
 @Composable
-private fun timeLeftText(ms: Long): String = when (val left = timeLeftOf(ms)) {
+internal fun timeLeftText(ms: Long): String = when (val left = timeLeftOf(ms)) {
     TimeLeft.AlmostDone -> stringResource(R.string.time_left_almost_done)
     TimeLeft.UnderAMinute -> stringResource(R.string.time_left_under_a_minute)
     is TimeLeft.Minutes -> stringResource(R.string.time_left_minutes, left.minutes)

@@ -11,12 +11,15 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -27,9 +30,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -42,6 +48,15 @@ import org.json.JSONObject
 // page into Finnish for every visitor, and PageVox's audience isn't Finnish.
 private const val SUPPORT_URL = "https://paypal.me/SimoPaso"
 
+// Where the layout switches from "phone" to "there is room for more than the
+// page". 600dp is the Material medium-width breakpoint: an unfolded foldable,
+// a tablet, and a phone in landscape all clear it, a folded phone does not.
+private val WIDE_LAYOUT_MIN_WIDTH = 600.dp
+
+// Wide enough for a 48dp touch target plus breathing room, narrow enough that
+// the rail costs the page far less than the bottom bar costs it in height.
+private val RAIL_WIDTH = 72.dp
+
 @Composable
 fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     var webView: WebView? by remember { mutableStateOf(null) }
@@ -50,6 +65,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     var showLicenses by remember { mutableStateOf(false) }
     var showClearSiteData by remember { mutableStateOf(false) }
     var showLibrary by remember { mutableStateOf(false) }
+    var showContents by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var showExitConfirm by remember { mutableStateOf(false) }
     val activity = LocalActivity.current
@@ -58,7 +74,17 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     // Back navigates the WebView while there's page history; once there isn't,
     // intercept it to confirm before exiting instead of silently closing.
     BackHandler {
-        if (canGoBack) webView?.goBack() else showExitConfirm = true
+        when {
+            // A side panel is the shallowest thing on screen, so it goes first.
+            // (In the compact layout the library is a bottom sheet, which
+            // handles its own back press before this ever runs.)
+            showLibrary || showContents -> {
+                showLibrary = false
+                showContents = false
+            }
+            canGoBack -> webView?.goBack()
+            else -> showExitConfirm = true
+        }
     }
 
     // Stop the service when the user navigates to a different page. We have to
@@ -112,105 +138,39 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            AddressBar(
-                url = viewModel.url,
-                history = viewModel.history,
-                isBookmarked = viewModel.isCurrentBookmarked,
-                onGo = { viewModel.submitAddressBarInput(it) },
-                onToggleBookmark = { viewModel.toggleBookmark() }
-            )
-        },
-        bottomBar = {
-            Column {
-                HorizontalReadingScrubber(
-                    totalSentences = viewModel.sentences.size,
-                    currentIndex = viewModel.currentHighlightIndex,
-                    sentences = viewModel.sentences,
-                    sectionStarts = viewModel.sectionStarts,
-                    sectionTitleAt = { viewModel.sectionTitleAt(it) },
-                    onSeekChange = { idx ->
-                        // Live-scroll the WebView to the sentence under the thumb.
-                        val text = viewModel.sentences.getOrNull(idx)
-                        if (text != null) {
-                            val escaped = JSONObject.quote(text)
-                            webView?.evaluateJavascript(
-                                "(function(){ window.find($escaped, false, false, true); })();",
-                                null
-                            )
-                        }
-                    },
-                    onSeekFinished = { idx ->
-                        // Commit: start playback from this position (the service
-                        // broadcasts updateIndex, which drives the thumb + highlight).
-                        val args = Bundle().apply { putInt("startIndex", idx) }
-                        controller?.sendCustomCommand(
-                            SessionCommand("playSentences", Bundle.EMPTY), args
-                        )
-                    }
-                )
-                val parentUrl = remember(viewModel.url) { parentFolderUrl(viewModel.url) }
-                BottomBar(
-                    isPlaying = isPlaying,
-                    hasSentences = viewModel.sentences.isNotEmpty(),
-                    speechRate = viewModel.speechRate,
-                    readerMode = viewModel.readerMode,
-                    followAlong = viewModel.followAlong,
-                    onToggleFollowAlong = { viewModel.toggleFollowAlong() },
-                    textZoom = viewModel.textZoom,
-                    canGoBack = canGoBack,
-                    canGoUp = parentUrl != null,
-                    onBack = { webView?.goBack() },
-                    onForward = { webView?.goForward() },
-                    onUp = { parentUrl?.let { viewModel.loadUrl(it) } },
-                    onHome = { viewModel.loadUrl(viewModel.homeUrl) },
-                    onOpenManual = { viewModel.loadUrl(manualUrl()) },
-                    onOpenLibrary = { showLibrary = true },
-                    onPlayPause = {
-                        if (viewModel.sentences.isEmpty()) {
-                            extractTexts(webView, viewModel.readerMode) { lang, blocks ->
-                                viewModel.onTextsExtracted(lang, blocks) { togglePlay() }
-                            }
-                        } else {
-                            togglePlay()
-                        }
-                    },
-                    onSkipPrevious = {
-                        controller?.sendCustomCommand(SessionCommand("skipPrevious", Bundle.EMPTY), Bundle.EMPTY)
-                    },
-                    onSkipNext = {
-                        controller?.sendCustomCommand(SessionCommand("skipNext", Bundle.EMPTY), Bundle.EMPTY)
-                    },
-                    onSkipPreviousSection = {
-                        controller?.sendCustomCommand(SessionCommand("skipPreviousSection", Bundle.EMPTY), Bundle.EMPTY)
-                    },
-                    onSkipNextSection = {
-                        controller?.sendCustomCommand(SessionCommand("skipNextSection", Bundle.EMPTY), Bundle.EMPTY)
-                    },
-                    onTextSmaller = { viewModel.decreaseTextSize() },
-                    onTextLarger = { viewModel.increaseTextSize() },
-                    onSetSpeed = { viewModel.applySpeechRate(it) },
-                    onToggleReader = {
-                        viewModel.toggleReaderMode()
-                        // Sentences were cleared; stop any in-progress read so the
-                        // next play re-extracts with the new scoping.
-                        controller?.sendCustomCommand(SessionCommand("stopPlayback", Bundle.EMPTY), Bundle.EMPTY)
-                    },
-                    onSettings = { showSettings = true },
-                    onSupportDevelopment = { openOutsideThisApp(context, SUPPORT_URL) },
-                    onTtsSettings = {
-                        try {
-                            val intent = Intent("com.android.settings.TTS_SETTINGS")
-                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            webView?.context?.startActivity(intent)
-                        } catch (e: Exception) {}
-                    }
-                )
-            }
-        }
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+    // ── Adaptive layout ───────────────────────────────────────────────────
+    //
+    // Narrow: address bar on top, scrubber and control bar along the bottom.
+    // Wide (an unfolded foldable, a tablet, a phone in landscape): the same
+    // controls move into a rail down the leading edge, which hands the page back
+    // the full height of the window, and the trailing edge can carry a panel —
+    // the library, or the page's contents — beside the page instead of on top
+    // of it.
+    val windowInfo = LocalWindowInfo.current
+    val density = LocalDensity.current
+    val windowWidth = with(density) { windowInfo.containerSize.width.toDp() }
+    val wide = windowWidth >= WIDE_LAYOUT_MIN_WIDTH
+    // Enough for a list of page titles, never so much that the page stops being
+    // readable: at the breakpoint itself the page still keeps around 250dp.
+    val panelWidth = (windowWidth * 0.38f).coerceIn(280.dp, 380.dp)
+
+    // The two panels are mutually exclusive. Between 600 and 900dp there is room
+    // for the page and one of them, not both.
+    fun openPanel(library: Boolean = false, contents: Boolean = false) {
+        showLibrary = library
+        showContents = contents
+    }
+
+    // Folding, unfolding or rotating moves the WebView between two entirely
+    // different call sites. Left to itself Compose would treat that as a new
+    // WebView: the page would reload, the scroll position would be lost and the
+    // extracted sentences thrown away, mid-sentence. movableContentOf relocates
+    // the *same* composition — the same WebView instance with it — so the fold
+    // is invisible to the reader. Everything captured below is either stable
+    // (the ViewModel) or read live (latestController), so nothing goes stale
+    // across the move.
+    val pageContent = remember {
+        movableContentOf {
             if (viewModel.url.isNotEmpty()) {
                 WebViewContainer(
                     url = viewModel.url,
@@ -227,7 +187,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                             val idx = viewModel.findSentenceIndex(clickedText)
                             if (idx >= 0) {
                                 val args = Bundle().apply { putInt("startIndex", idx) }
-                                controller?.sendCustomCommand(
+                                latestController.value?.sendCustomCommand(
                                     SessionCommand("playSentences", Bundle.EMPTY), args
                                 )
                             }
@@ -246,7 +206,182 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                     followAlong = viewModel.followAlong
                 )
             }
-            if (viewModel.isLoading) CircularProgressIndicator(Modifier.align(Alignment.Center))
+        }
+    }
+
+    // Scrubber and controls are emitted from one place each and called from
+    // whichever arrangement is on screen, so the two layouts can't drift apart.
+    val scrubber: @Composable () -> Unit = {
+        HorizontalReadingScrubber(
+            totalSentences = viewModel.sentences.size,
+            currentIndex = viewModel.currentHighlightIndex,
+            sentences = viewModel.sentences,
+            sectionStarts = viewModel.sectionStarts,
+            sectionTitleAt = { viewModel.sectionTitleAt(it) },
+            onSeekChange = { idx ->
+                // Live-scroll the WebView to the sentence under the thumb.
+                val text = viewModel.sentences.getOrNull(idx)
+                if (text != null) {
+                    val escaped = JSONObject.quote(text)
+                    webView?.evaluateJavascript(
+                        "(function(){ window.find($escaped, false, false, true); })();",
+                        null
+                    )
+                }
+            },
+            onSeekFinished = { idx ->
+                // Commit: start playback from this position (the service
+                // broadcasts updateIndex, which drives the thumb + highlight).
+                val args = Bundle().apply { putInt("startIndex", idx) }
+                controller?.sendCustomCommand(
+                    SessionCommand("playSentences", Bundle.EMPTY), args
+                )
+            }
+        )
+    }
+
+    val controls: @Composable (Boolean) -> Unit = { railLayout ->
+        val parentUrl = remember(viewModel.url) { parentFolderUrl(viewModel.url) }
+        PlaybackControls(
+            wide = railLayout,
+            libraryOpen = showLibrary,
+            contentsOpen = showContents,
+            onOpenContents = { openPanel(contents = !showContents) },
+            isPlaying = isPlaying,
+            hasSentences = viewModel.sentences.isNotEmpty(),
+            speechRate = viewModel.speechRate,
+            readerMode = viewModel.readerMode,
+            followAlong = viewModel.followAlong,
+            onToggleFollowAlong = { viewModel.toggleFollowAlong() },
+            textZoom = viewModel.textZoom,
+            canGoBack = canGoBack,
+            canGoUp = parentUrl != null,
+            onBack = { webView?.goBack() },
+            onForward = { webView?.goForward() },
+            onUp = { parentUrl?.let { viewModel.loadUrl(it) } },
+            onHome = { viewModel.loadUrl(viewModel.homeUrl) },
+            onOpenManual = { viewModel.loadUrl(manualUrl()) },
+            onOpenLibrary = {
+                if (railLayout) openPanel(library = !showLibrary) else showLibrary = true
+            },
+            onPlayPause = {
+                if (viewModel.sentences.isEmpty()) {
+                    extractTexts(webView, viewModel.readerMode) { lang, blocks ->
+                        viewModel.onTextsExtracted(lang, blocks) { togglePlay() }
+                    }
+                } else {
+                    togglePlay()
+                }
+            },
+            onSkipPrevious = {
+                controller?.sendCustomCommand(SessionCommand("skipPrevious", Bundle.EMPTY), Bundle.EMPTY)
+            },
+            onSkipNext = {
+                controller?.sendCustomCommand(SessionCommand("skipNext", Bundle.EMPTY), Bundle.EMPTY)
+            },
+            onSkipPreviousSection = {
+                controller?.sendCustomCommand(SessionCommand("skipPreviousSection", Bundle.EMPTY), Bundle.EMPTY)
+            },
+            onSkipNextSection = {
+                controller?.sendCustomCommand(SessionCommand("skipNextSection", Bundle.EMPTY), Bundle.EMPTY)
+            },
+            onTextSmaller = { viewModel.decreaseTextSize() },
+            onTextLarger = { viewModel.increaseTextSize() },
+            onSetSpeed = { viewModel.applySpeechRate(it) },
+            onToggleReader = {
+                viewModel.toggleReaderMode()
+                // Sentences were cleared; stop any in-progress read so the
+                // next play re-extracts with the new scoping.
+                controller?.sendCustomCommand(SessionCommand("stopPlayback", Bundle.EMPTY), Bundle.EMPTY)
+            },
+            onSettings = { showSettings = true },
+            onSupportDevelopment = { openOutsideThisApp(context, SUPPORT_URL) },
+            onTtsSettings = {
+                try {
+                    val intent = Intent("com.android.settings.TTS_SETTINGS")
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    webView?.context?.startActivity(intent)
+                } catch (e: Exception) {}
+            }
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            AddressBar(
+                url = viewModel.url,
+                history = viewModel.history,
+                isBookmarked = viewModel.isCurrentBookmarked,
+                onGo = { viewModel.submitAddressBarInput(it) },
+                onToggleBookmark = { viewModel.toggleBookmark() }
+            )
+        },
+        bottomBar = {
+            if (!wide) {
+                Column {
+                    scrubber()
+                    controls(false)
+                }
+            }
+        }
+    ) { padding ->
+        if (wide) {
+            Row(Modifier.padding(padding).fillMaxSize()) {
+                controls(true)
+                VerticalDivider()
+                Column(Modifier.weight(1f)) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        pageContent()
+                        if (viewModel.isLoading) {
+                            CircularProgressIndicator(Modifier.align(Alignment.Center))
+                        }
+                    }
+                    scrubber()
+                }
+                if (showLibrary || showContents) {
+                    VerticalDivider()
+                    SidePanel(
+                        title = stringResource(
+                            if (showContents) R.string.panel_contents else R.string.menu_library
+                        ),
+                        onClose = { openPanel() },
+                        modifier = Modifier.width(panelWidth)
+                    ) {
+                        if (showContents) {
+                            ContentsPanel(
+                                sentences = viewModel.sentences,
+                                sectionStarts = viewModel.sectionStarts,
+                                sectionTitleAt = { viewModel.sectionTitleAt(it) },
+                                currentIndex = viewModel.currentHighlightIndex,
+                                remainingMsFrom = { viewModel.remainingMsFrom(it) },
+                                speechRate = viewModel.speechRate,
+                                onSeek = { idx ->
+                                    val args = Bundle().apply { putInt("startIndex", idx) }
+                                    controller?.sendCustomCommand(
+                                        SessionCommand("playSentences", Bundle.EMPTY), args
+                                    )
+                                }
+                            )
+                        } else {
+                            LibraryContent(
+                                continueListening = viewModel.continueListening,
+                                bookmarks = viewModel.bookmarks,
+                                history = viewModel.history,
+                                speechRate = viewModel.speechRate,
+                                onOpen = { pageUrl -> viewModel.loadUrl(pageUrl) },
+                                onRemoveBookmark = { viewModel.removeBookmark(it) },
+                                onClearHistory = { viewModel.clearHistory() },
+                                fillHeight = true
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            Box(Modifier.padding(padding).fillMaxSize()) {
+                pageContent()
+                if (viewModel.isLoading) CircularProgressIndicator(Modifier.align(Alignment.Center))
+            }
         }
     }
 
@@ -291,7 +426,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
         )
     }
 
-    if (showLibrary) {
+    if (showLibrary && !wide) {
         LibrarySheet(
             continueListening = viewModel.continueListening,
             bookmarks = viewModel.bookmarks,
@@ -327,8 +462,21 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     }
 }
 
+/**
+ * The playback controls, in whichever shape the window calls for: a bar across
+ * the bottom on a phone, or a rail down the leading edge when the window is wide
+ * enough that a full-width bar would strand the buttons a hand-span apart.
+ *
+ * Same buttons in the same order either way — folding the device should not
+ * rearrange the user's controls — except that the rail, having room, promotes a
+ * few actions out of the overflow menu and can show which side panel is open.
+ */
 @Composable
-fun BottomBar(
+fun PlaybackControls(
+    wide: Boolean,
+    libraryOpen: Boolean,
+    contentsOpen: Boolean,
+    onOpenContents: () -> Unit,
     isPlaying: Boolean,
     hasSentences: Boolean,
     speechRate: Float,
@@ -357,59 +505,148 @@ fun BottomBar(
     onSupportDevelopment: () -> Unit,
     onTtsSettings: () -> Unit
 ) {
-    BottomAppBar {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+    // One list of buttons, two containers. Emitting the items from a single
+    // lambda is what stops the bar and the rail drifting apart as controls come
+    // and go.
+    val items: @Composable () -> Unit = {
+        IconButton(onBack, enabled = canGoBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.nav_back))
+        }
+        IconButton(onForward) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.nav_forward))
+        }
+        SkipButton(
+            icon = Icons.Default.SkipPrevious,
+            label = stringResource(R.string.previous_sentence),
+            longPressLabel = stringResource(R.string.previous_section),
+            enabled = hasSentences,
+            onClick = onSkipPrevious,
+            onLongClick = onSkipPreviousSection
+        )
+        FloatingActionButton(onClick = onPlayPause) {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                stringResource(R.string.play_pause)
+            )
+        }
+        SkipButton(
+            icon = Icons.Default.SkipNext,
+            label = stringResource(R.string.next_sentence),
+            longPressLabel = stringResource(R.string.next_section),
+            enabled = hasSentences,
+            onClick = onSkipNext,
+            onLongClick = onSkipNextSection
+        )
+        if (wide) {
+            // Room to hand back the actions the phone layout has to hide.
+            ControlSeparator()
+            IconButton(onHome) {
+                Icon(Icons.Default.Home, stringResource(R.string.menu_home))
+            }
+            IconToggleButton(checked = libraryOpen, onCheckedChange = { onOpenLibrary() }) {
+                Icon(Icons.Default.Bookmarks, stringResource(R.string.menu_library))
+            }
+            IconToggleButton(checked = contentsOpen, onCheckedChange = { onOpenContents() }) {
+                Icon(Icons.AutoMirrored.Filled.FormatListBulleted, stringResource(R.string.panel_contents))
+            }
+            ControlSeparator()
+            IconToggleButton(checked = readerMode, onCheckedChange = { onToggleReader() }) {
+                Icon(Icons.AutoMirrored.Filled.Article, stringResource(R.string.menu_reader_mode))
+            }
+            IconToggleButton(checked = followAlong, onCheckedChange = { onToggleFollowAlong() }) {
+                Icon(Icons.Default.Highlight, stringResource(R.string.menu_follow_along))
+            }
+            ControlSeparator()
+        }
+        BottomBarOverflow(
+            promotedInline = wide,
+            speechRate = speechRate,
+            readerMode = readerMode,
+            followAlong = followAlong,
+            onToggleFollowAlong = onToggleFollowAlong,
+            textZoom = textZoom,
+            canGoUp = canGoUp,
+            onUp = onUp,
+            onHome = onHome,
+            onOpenManual = onOpenManual,
+            onOpenLibrary = onOpenLibrary,
+            onTextSmaller = onTextSmaller,
+            onTextLarger = onTextLarger,
+            onSetSpeed = onSetSpeed,
+            onToggleReader = onToggleReader,
+            onSettings = onSettings,
+            onSupportDevelopment = onSupportDevelopment,
+            onTtsSettings = onTtsSettings
+        )
+    }
+
+    if (wide) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxHeight()
         ) {
-            IconButton(onBack, enabled = canGoBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.nav_back))
-            }
-            IconButton(onForward) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.nav_forward))
-            }
-            SkipButton(
-                icon = Icons.Default.SkipPrevious,
-                label = stringResource(R.string.previous_sentence),
-                longPressLabel = stringResource(R.string.previous_section),
-                enabled = hasSentences,
-                onClick = onSkipPrevious,
-                onLongClick = onSkipPreviousSection
-            )
-            FloatingActionButton(onClick = onPlayPause) {
-                Icon(
-                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    stringResource(R.string.play_pause)
+            // Scrollable because the rail also serves a phone in landscape, where
+            // the whole stack of controls is taller than the window.
+            Column(
+                modifier = Modifier
+                    .width(RAIL_WIDTH)
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) { items() }
+        }
+    } else {
+        BottomAppBar {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) { items() }
+        }
+    }
+}
+
+/** Groups the rail's buttons. Rail-only by design: the bottom bar spreads its
+ *  buttons with SpaceEvenly, which an extra child would throw off. */
+@Composable
+private fun ControlSeparator() {
+    HorizontalDivider(Modifier.padding(vertical = 4.dp).width(40.dp))
+}
+
+/**
+ * Container for the wide layout's trailing panel: a titled surface with a close
+ * button. It sits beside the page rather than over it — being able to look at
+ * both at once is the whole point of the extra width.
+ */
+@Composable
+private fun SidePanel(
+    title: String,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = modifier.fillMaxHeight()
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+                IconButton(onClose) {
+                    Icon(Icons.Default.Close, stringResource(R.string.panel_close))
+                }
             }
-            SkipButton(
-                icon = Icons.Default.SkipNext,
-                label = stringResource(R.string.next_sentence),
-                longPressLabel = stringResource(R.string.next_section),
-                enabled = hasSentences,
-                onClick = onSkipNext,
-                onLongClick = onSkipNextSection
-            )
-            BottomBarOverflow(
-                speechRate = speechRate,
-                readerMode = readerMode,
-                followAlong = followAlong,
-                onToggleFollowAlong = onToggleFollowAlong,
-                textZoom = textZoom,
-                canGoUp = canGoUp,
-                onUp = onUp,
-                onHome = onHome,
-                onOpenManual = onOpenManual,
-                onOpenLibrary = onOpenLibrary,
-                onTextSmaller = onTextSmaller,
-                onTextLarger = onTextLarger,
-                onSetSpeed = onSetSpeed,
-                onToggleReader = onToggleReader,
-                onSettings = onSettings,
-                onSupportDevelopment = onSupportDevelopment,
-                onTtsSettings = onTtsSettings
-            )
+            content()
         }
     }
 }
@@ -466,6 +703,7 @@ private fun SkipButton(
  */
 @Composable
 private fun BottomBarOverflow(
+    promotedInline: Boolean,
     speechRate: Float,
     readerMode: Boolean,
     followAlong: Boolean,
@@ -496,16 +734,20 @@ private fun BottomBarOverflow(
                 onClick = { onUp(); open = false },
                 leadingIcon = { Icon(Icons.Default.ArrowUpward, contentDescription = null) }
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_home)) },
-                onClick = { onHome(); open = false },
-                leadingIcon = { Icon(Icons.Default.Home, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_library)) },
-                onClick = { onOpenLibrary(); open = false },
-                leadingIcon = { Icon(Icons.Default.Bookmarks, contentDescription = null) }
-            )
+            // Hidden when the rail already carries them, rather than listed
+            // twice: a menu that repeats the buttons next to it reads as clutter.
+            if (!promotedInline) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_home)) },
+                    onClick = { onHome(); open = false },
+                    leadingIcon = { Icon(Icons.Default.Home, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_library)) },
+                    onClick = { onOpenLibrary(); open = false },
+                    leadingIcon = { Icon(Icons.Default.Bookmarks, contentDescription = null) }
+                )
+            }
             HorizontalDivider()
             // Text-size stepper. These don't close the menu so zoom can be nudged
             // repeatedly; the current percentage shows between the −/+ buttons.
@@ -531,23 +773,25 @@ private fun BottomBarOverflow(
                 }
             }
             HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_reader_mode)) },
-                onClick = { onToggleReader(); open = false },
-                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Article, contentDescription = null) },
-                trailingIcon = {
-                    if (readerMode) Icon(Icons.Default.Check, stringResource(R.string.state_on))
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_follow_along)) },
-                onClick = { onToggleFollowAlong(); open = false },
-                leadingIcon = { Icon(Icons.Default.Highlight, contentDescription = null) },
-                trailingIcon = {
-                    if (followAlong) Icon(Icons.Default.Check, stringResource(R.string.state_on))
-                }
-            )
-            HorizontalDivider()
+            if (!promotedInline) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_reader_mode)) },
+                    onClick = { onToggleReader(); open = false },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Article, contentDescription = null) },
+                    trailingIcon = {
+                        if (readerMode) Icon(Icons.Default.Check, stringResource(R.string.state_on))
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_follow_along)) },
+                    onClick = { onToggleFollowAlong(); open = false },
+                    leadingIcon = { Icon(Icons.Default.Highlight, contentDescription = null) },
+                    trailingIcon = {
+                        if (followAlong) Icon(Icons.Default.Check, stringResource(R.string.state_on))
+                    }
+                )
+                HorizontalDivider()
+            }
             Text(
                 stringResource(R.string.menu_reading_speed),
                 style = MaterialTheme.typography.labelMedium,
