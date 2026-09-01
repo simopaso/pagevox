@@ -3,6 +3,7 @@ package fi.paso.pagevox
 import android.app.PendingIntent
 import android.app.TaskStackBuilder
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -42,6 +43,11 @@ private const val TAG = "PlaybackService"
 private const val SECTION_PAUSE_MS = 400L
 private const val SILENCE_UTTERANCE_PREFIX = "gap-"
 
+// How often the audio mode is sampled while there is something to pause or
+// resume. One binder call a second, and only while playing (or parked waiting
+// for a call to end) — see [PlaybackService.isInCall].
+private const val CALL_POLL_MS = 1_000L
+
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
@@ -64,6 +70,15 @@ class PlaybackService : MediaSessionService() {
     private var appliedVoiceName: String? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val audioManager by lazy { getSystemService(AudioManager::class.java) }
+    // Set when playback was paused by a call rather than by the user, so that
+    // the end of the call resumes the page — and a manual pause during the
+    // call does not get undone when it ends.
+    private var pausedForCall = false
+    // Guards the one playWhenReady=false we issue ourselves, so the listener
+    // can tell our pause apart from the user's.
+    private var togglingForCall = false
 
     // Owns persistence of the reading position. Deliberately not routed through
     // the Activity/MediaController — that connection only exists while the app
@@ -121,7 +136,33 @@ class PlaybackService : MediaSessionService() {
 
         player.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // A pause we did not issue (the user tapping pause while a call is
+                // running) cancels the pending auto-resume: we only ever resume
+                // playback we stopped ourselves.
+                if (!playWhenReady && !togglingForCall) pausedForCall = false
                 if (playWhenReady) resumePlayback() else pausePlayback()
+            }
+
+            override fun onPlaybackSuppressionReasonChanged(reason: Int) {
+                // The player carries nothing but silence; the audio the user hears
+                // comes from the TTS engine, which knows nothing about audio focus.
+                // So a transient focus loss (an incoming call ringing, another app's
+                // spoken prompt) suppresses the silent track while the engine talks
+                // straight over the top of it — playWhenReady stays true, and this
+                // is the only callback we get. Mirror the suppression onto the
+                // engine so the narration actually stops.
+                if (!player.playWhenReady) return
+                if (reason == Player.PLAYBACK_SUPPRESSION_REASON_NONE) {
+                    // Focus is back — but on a Bluetooth headset that happens as soon
+                    // as the *ringtone* stops, i.e. the moment the call is answered,
+                    // because the call itself runs on the SCO/voice path and does not
+                    // hold media focus. Resuming here is exactly how the narration
+                    // ended up playing over the conversation; stay quiet until the
+                    // call is genuinely over.
+                    if (isInCall()) pauseForCall() else resumePlayback()
+                } else {
+                    pausePlayback()
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -316,6 +357,7 @@ class PlaybackService : MediaSessionService() {
     private fun resumePlayback() {
         if (!isTtsReady) return
         ensureSilentPlayer()
+        startCallWatch()
         if (!tts.isSpeaking) speakNextSentence()
     }
 
@@ -332,6 +374,69 @@ class PlaybackService : MediaSessionService() {
         // teardown (onTaskRemoved stops the service when paused) might follow
         // within moments, so make sure the write is in flight right now too.
         persistPosition()
+    }
+
+    // ── Phone calls ──────────────────────────────────────────────────────────
+    //
+    // The player's own audio-focus handling cannot carry this alone, for two
+    // reasons. TTS audio never passes through the player, so focus changes do not
+    // reach the engine at all (that half is handled in the suppression callback
+    // above). And a call over a Bluetooth headset runs on the voice/SCO path,
+    // releasing media focus the instant the ringtone stops — so focus says "you
+    // may play again" in the middle of the call, which is the bug: the page kept
+    // being read over the conversation.
+    //
+    // The audio mode is the one signal that stays raised for the whole call, for
+    // telephony and VoIP alike, and reading it needs no permission (unlike
+    // TelephonyManager's call state, which wants READ_PHONE_STATE on API 31+).
+    // We pause on it and resume when the phone returns to MODE_NORMAL.
+
+    /** True while the phone is ringing or in a call of any kind. Every mode above
+     *  MODE_NORMAL is a call mode — ringtone, telephony, VoIP, call screening, or
+     *  one of the redirect modes added in later API levels — so comparing against
+     *  NORMAL rather than listing constants stays correct as that list grows. */
+    private fun isInCall(): Boolean {
+        val mode = try { audioManager?.mode } catch (e: Exception) { null } ?: return false
+        return mode > AudioManager.MODE_NORMAL
+    }
+
+    /** Pause for a call, routed through playWhenReady so the notification and
+     *  lock-screen controls show paused too and the position is persisted. */
+    private fun pauseForCall() {
+        if (!player.playWhenReady) return
+        Log.d(TAG, "Pausing for call (audio mode=${audioManager?.mode})")
+        pausedForCall = true
+        togglingForCall = true
+        try { player.playWhenReady = false } finally { togglingForCall = false }
+    }
+
+    private fun onAudioModeChanged() {
+        if (isInCall()) {
+            pauseForCall()
+        } else if (pausedForCall) {
+            Log.d(TAG, "Call over, resuming")
+            pausedForCall = false
+            player.playWhenReady = true
+        }
+    }
+
+    /** There is no mode-change callback before API 31, so sample it instead. The
+     *  loop runs only while playing or while parked mid-call, and stops itself as
+     *  soon as neither is true. Noticing a call *start* up to a second late costs
+     *  nothing in practice — the focus loss above catches the ring immediately;
+     *  this is what notices the call ending. */
+    private fun startCallWatch() {
+        mainHandler.removeCallbacks(callWatchRunnable)
+        mainHandler.post(callWatchRunnable)
+    }
+
+    private val callWatchRunnable = object : Runnable {
+        override fun run() {
+            onAudioModeChanged()
+            if (player.playWhenReady || pausedForCall) {
+                mainHandler.postDelayed(this, CALL_POLL_MS)
+            }
+        }
     }
 
     /** Save the current sentence index against the loaded page's URL, straight
@@ -370,6 +475,8 @@ class PlaybackService : MediaSessionService() {
             return
         }
         try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
+        // An explicit play/seek supersedes any pending post-call resume.
+        pausedForCall = false
         applyContentLanguage()
         currentSentenceIndex = index
         // Rebuild the silent track with the current sentence list's estimated
@@ -386,6 +493,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun stopPlayback() {
         if (isTtsReady) try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
+        pausedForCall = false
         currentSentenceIndex = 0
         player.playWhenReady = false
         player.stop()
@@ -485,6 +593,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(callWatchRunnable)
         mediaSession?.run {
             player.release()
             release()
