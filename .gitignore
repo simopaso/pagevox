@@ -1,12 +1,11 @@
 *.iml
 .gradle
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+# The whole IDE directory: it is per-machine state, and one of its files
+# records the local path to the selected emulator image.
+/.idea/
+# Working notes for Claude Code. Kept locally, deliberately not published.
+/CLAUDE.md
 .DS_Store
 /build
 /captures
