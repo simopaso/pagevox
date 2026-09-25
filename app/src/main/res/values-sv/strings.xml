@@ -40,6 +40,21 @@
     <string name="contents_no_sections">Sidan har inga rubriker</string>
     <string name="contents_nothing_loaded">Tryck på spela — sidans avsnitt visas här</string>
 
+    <!-- Säkerhetskopia -->
+    <string name="settings_export">Säkerhetskopiera till en fil</string>
+    <string name="settings_export_summary">Bokmärken, historik, läspositioner och inställningar</string>
+    <string name="settings_import">Återställ från en fil</string>
+    <string name="settings_import_summary">Ersätter dem med en PageVox-säkerhetskopia</string>
+    <string name="import_confirm_title">Återställa från säkerhetskopian?</string>
+    <string name="import_confirm_message">Dina bokmärken, din historik, dina läspositioner och inställningar ersätts med dem i säkerhetskopian.</string>
+    <string name="import_confirm_counts">Bokmärken: %1$d · Sidor i historiken: %2$d</string>
+    <string name="import_confirm">Återställ</string>
+    <string name="export_done">Säkerhetskopian sparades</string>
+    <string name="export_failed">Det gick inte att spara säkerhetskopian</string>
+    <string name="import_done">Säkerhetskopian återställdes</string>
+    <string name="import_failed">Det gick inte att återställa säkerhetskopian</string>
+    <string name="import_invalid">Filen är inte en PageVox-säkerhetskopia</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Avsluta PageVox?</string>
     <string name="exit_message">Det finns ingen föregående sida att gå tillbaka till. Vill du stänga appen?</string>

@@ -199,4 +199,53 @@ class PlaybackDataRepositoryTest {
         PlaybackDataRepository.speechRate = 2.0f
         assertEquals(atNormalSpeed, PlaybackDataRepository.baseRemainingMsFrom(0))
     }
+
+    @Test
+    fun onlyWebImageUrlsAreKept() {
+        // The image URL comes from the page and ends up in Media3's bitmap
+        // loader, which would happily read file:// and content:// too.
+        for (hostile in listOf(
+            "file:///data/data/fi.paso.pagevox/shared_prefs/x.xml",
+            "content://com.android.contacts/contacts",
+            "javascript:alert(1)",
+            "data:image/png;base64,AAAA"
+        )) {
+            PlaybackDataRepository.setSentences(listOf("One."), imageUrl = hostile)
+            assertNull(hostile, PlaybackDataRepository.imageUrl)
+        }
+        PlaybackDataRepository.setSentences(listOf("One."), imageUrl = "https://example.com/a.jpg")
+        assertEquals("https://example.com/a.jpg", PlaybackDataRepository.imageUrl)
+    }
+
+    @Test
+    fun everyNewSentenceSetBumpsTheGeneration() {
+        val start = PlaybackDataRepository.generation
+        PlaybackDataRepository.setSentences(listOf("One."))
+        PlaybackDataRepository.setSentences(listOf("One."))
+        PlaybackDataRepository.clear()
+        assertEquals(start + 3, PlaybackDataRepository.generation)
+    }
+
+    @Test
+    fun snapshotRestoresTheSamePage() {
+        PlaybackDataRepository.setSentences(
+            listOf("Heading", "Body [1].", "More body."),
+            language = "en",
+            pageUrl = "https://example.com/p",
+            spokenSentences = listOf("Heading", "Body.", "More body."),
+            sectionStarts = listOf(0),
+            sectionTitles = listOf("Heading"),
+            title = "A page",
+            imageUrl = "https://example.com/p.jpg"
+        )
+        val snapshot = PlaybackDataRepository.snapshot()!!
+        PlaybackDataRepository.clear()
+        assertNull(PlaybackDataRepository.snapshot())
+
+        PlaybackDataRepository.restore(snapshot, startIndex = 2)
+        assertEquals(snapshot, PlaybackDataRepository.snapshot())
+        assertEquals(2, PlaybackDataRepository.currentIndex)
+        assertEquals("Body.", PlaybackDataRepository.getSpokenSentence(1))
+        assertEquals("Heading", PlaybackDataRepository.sectionTitleAt(2))
+    }
 }

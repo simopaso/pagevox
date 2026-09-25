@@ -7,8 +7,11 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +34,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -41,6 +45,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import org.json.JSONObject
+import java.time.LocalDate
 
 // Voluntary support for development. Unlocks nothing in the app and is never
 // required for any feature — it is a link out, not a purchase.
@@ -70,6 +75,35 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     var showExitConfirm by remember { mutableStateOf(false) }
     val activity = LocalActivity.current
     val context = LocalContext.current
+
+    // Backup and restore go through the system file picker: no storage
+    // permission needed, and the user decides where the file lives — Drive,
+    // Downloads, a USB stick.
+    // LocalResources rather than context.getString: it tracks configuration
+    // changes, which matters here because this activity handles most of them
+    // itself instead of being recreated (see configChanges in the manifest).
+    val resources = LocalResources.current
+    fun toast(message: Int) =
+        Toast.makeText(context, resources.getString(message), Toast.LENGTH_SHORT).show()
+    val appVersion = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+    }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportLibrary(uri, appVersion) { ok ->
+                toast(if (ok) R.string.export_done else R.string.export_failed)
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.readImport(uri) { toast(R.string.import_invalid) }
+    }
 
     // Back navigates the WebView while there's page history; once there isn't,
     // intercept it to confirm before exiting instead of silently closing.
@@ -193,8 +227,8 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                             }
                         }
                         if (viewModel.sentences.isEmpty()) {
-                            extractTexts(webView, viewModel.readerMode) { lang, blocks ->
-                                viewModel.onTextsExtracted(lang, blocks) { seekAndPlay() }
+                            extractTexts(webView, viewModel.readerMode) { lang, blocks, image ->
+                                viewModel.onTextsExtracted(lang, blocks, image) { seekAndPlay() }
                             }
                         } else {
                             seekAndPlay()
@@ -266,8 +300,8 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             },
             onPlayPause = {
                 if (viewModel.sentences.isEmpty()) {
-                    extractTexts(webView, viewModel.readerMode) { lang, blocks ->
-                        viewModel.onTextsExtracted(lang, blocks) { togglePlay() }
+                    extractTexts(webView, viewModel.readerMode) { lang, blocks, image ->
+                        viewModel.onTextsExtracted(lang, blocks, image) { togglePlay() }
                     }
                 } else {
                     togglePlay()
@@ -394,6 +428,15 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             onSelectVoice = { viewModel.updateSelectedVoice(it) },
             onShowLicenses = { showLicenses = true },
             onClearSiteData = { showClearSiteData = true },
+            onExportLibrary = { exportLauncher.launch("pagevox-backup-${LocalDate.now()}.json") },
+            onImportLibrary = {
+                // Several document providers label a .json file as a generic
+                // binary or plain text, and would hide it behind a JSON-only
+                // filter. The contents are validated on the way in regardless.
+                importLauncher.launch(
+                    arrayOf("application/json", "application/octet-stream", "text/plain")
+                )
+            },
             onDismiss = { showSettings = false },
             onSave = { newUrl: String ->
                 viewModel.updateHomeUrl(newUrl)
@@ -420,6 +463,44 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             },
             dismissButton = {
                 TextButton(onClick = { showClearSiteData = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    viewModel.pendingImport?.let { backup ->
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelImport() },
+            title = { Text(stringResource(R.string.import_confirm_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.import_confirm_message))
+                    Spacer(Modifier.height(12.dp))
+                    // What's in the file, so picking the wrong backup is caught
+                    // before it overwrites anything.
+                    Text(
+                        stringResource(
+                            R.string.import_confirm_counts,
+                            backup.bookmarks.size,
+                            backup.history.size
+                        ),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.confirmImport { ok ->
+                        toast(if (ok) R.string.import_done else R.string.import_failed)
+                    }
+                    // Settings holds the home page in an edit field; closing it
+                    // stops a later Save from writing the pre-restore value back.
+                    showSettings = false
+                }) { Text(stringResource(R.string.import_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelImport() }) {
                     Text(stringResource(R.string.cancel))
                 }
             }

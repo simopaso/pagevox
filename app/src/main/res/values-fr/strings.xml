@@ -42,6 +42,21 @@
     <string name="contents_no_sections">Cette page ne contient aucun titre</string>
     <string name="contents_nothing_loaded">Appuyez sur lecture — les sections de la page apparaîtront ici</string>
 
+    <!-- Sauvegarde -->
+    <string name="settings_export">Sauvegarder dans un fichier</string>
+    <string name="settings_export_summary">Favoris, historique, positions de lecture et paramètres</string>
+    <string name="settings_import">Restaurer depuis un fichier</string>
+    <string name="settings_import_summary">Les remplace par une sauvegarde PageVox</string>
+    <string name="import_confirm_title">Restaurer depuis la sauvegarde ?</string>
+    <string name="import_confirm_message">Vos favoris, votre historique, vos positions de lecture et vos paramètres seront remplacés par ceux de la sauvegarde.</string>
+    <string name="import_confirm_counts">Favoris : %1$d · Pages dans l\'historique : %2$d</string>
+    <string name="import_confirm">Restaurer</string>
+    <string name="export_done">Sauvegarde enregistrée</string>
+    <string name="export_failed">Impossible d\'enregistrer la sauvegarde</string>
+    <string name="import_done">Sauvegarde restaurée</string>
+    <string name="import_failed">Impossible de restaurer la sauvegarde</string>
+    <string name="import_invalid">Ce fichier n\'est pas une sauvegarde PageVox</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Quitter PageVox ?</string>
     <string name="exit_message">Il n\'y a pas de page précédente vers laquelle revenir. Fermer l\'application ?</string>

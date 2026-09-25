@@ -21,9 +21,9 @@ android {
         // The target Android API level for the app.
         targetSdk = 36
         // An internal version number for the app.
-        versionCode = 31
+        versionCode = 32
         // A user-facing version number for the app.
-        versionName = "2.19"
+        versionName = "2.20"
 
         // The fully qualified class name of the test instrumentation runner.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -110,6 +110,10 @@ dependencies {
 
     // Dependencies for unit tests
     testImplementation(libs.junit)
+    // The real org.json for JVM tests. android.jar only carries stubs that throw
+    // "Stub!", so the backup and resume-snapshot codecs couldn't be tested
+    // against it; on the device the platform's own copy is used.
+    testImplementation("org.json:json:20240303")
 
     // Dependencies for Android instrumentation tests
     androidTestImplementation(libs.androidx.junit)

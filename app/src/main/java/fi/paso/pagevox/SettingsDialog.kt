@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NoAccounts
 import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,6 +67,8 @@ fun SettingsDialog(
     onSelectVoice: (String) -> Unit,
     onShowLicenses: () -> Unit,
     onClearSiteData: () -> Unit,
+    onExportLibrary: () -> Unit,
+    onImportLibrary: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
@@ -194,6 +198,18 @@ fun SettingsDialog(
                 }
                 Spacer(Modifier.height(16.dp))
                 HorizontalDivider()
+                SettingsActionRow(
+                    icon = Icons.Default.Backup,
+                    title = stringResource(R.string.settings_export),
+                    summary = stringResource(R.string.settings_export_summary),
+                    onClick = onExportLibrary
+                )
+                SettingsActionRow(
+                    icon = Icons.Default.Restore,
+                    title = stringResource(R.string.settings_import),
+                    summary = stringResource(R.string.settings_import_summary),
+                    onClick = onImportLibrary
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -338,6 +354,34 @@ fun LicensesDialog(onDismiss: () -> Unit) {
                     Spacer(Modifier.height(48.dp))
                 }
             }
+        }
+    }
+}
+
+/** A tappable settings row: icon, title, and a one-line explanation below. */
+@Composable
+private fun SettingsActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    summary: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title)
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

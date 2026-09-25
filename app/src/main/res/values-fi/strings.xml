@@ -40,6 +40,21 @@
     <string name="contents_no_sections">Tällä sivulla ei ole otsikoita</string>
     <string name="contents_nothing_loaded">Paina toista — sivun osiot ilmestyvät tähän</string>
 
+    <!-- Varmuuskopio -->
+    <string name="settings_export">Varmuuskopioi tiedostoon</string>
+    <string name="settings_export_summary">Kirjanmerkit, historia, lukukohdat ja asetukset</string>
+    <string name="settings_import">Palauta tiedostosta</string>
+    <string name="settings_import_summary">Korvaa ne PageVoxin varmuuskopiolla</string>
+    <string name="import_confirm_title">Palautetaanko varmuuskopiosta?</string>
+    <string name="import_confirm_message">Kirjanmerkkisi, historiasi, lukukohtasi ja asetuksesi korvataan varmuuskopion tiedoilla.</string>
+    <string name="import_confirm_counts">Kirjanmerkit: %1$d · Sivuja historiassa: %2$d</string>
+    <string name="import_confirm">Palauta</string>
+    <string name="export_done">Varmuuskopio tallennettu</string>
+    <string name="export_failed">Varmuuskopiota ei voitu tallentaa</string>
+    <string name="import_done">Varmuuskopio palautettu</string>
+    <string name="import_failed">Varmuuskopiota ei voitu palauttaa</string>
+    <string name="import_invalid">Tiedosto ei ole PageVoxin varmuuskopio</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Suljetaanko PageVox?</string>
     <string name="exit_message">Edellistä sivua, jolle palata, ei ole. Suljetaanko sovellus?</string>

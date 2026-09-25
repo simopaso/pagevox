@@ -3,7 +3,10 @@ package fi.paso.pagevox
 import android.app.PendingIntent
 import android.app.TaskStackBuilder
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,24 +15,38 @@ import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
 import androidx.annotation.OptIn
+import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+import androidx.media3.exoplayer.source.ForwardingTimeline
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.SilenceMediaSource
+import androidx.media3.exoplayer.source.WrappingMediaSource
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.util.Locale
 import java.util.UUID
 
@@ -47,6 +64,18 @@ private const val SILENCE_UTTERANCE_PREFIX = "gap-"
 // resume. One binder call a second, and only while playing (or parked waiting
 // for a call to end) — see [PlaybackService.isInCall].
 private const val CALL_POLL_MS = 1_000L
+
+// The silent track's MediaItem URI. Nothing ever fetches it: the player's only
+// source factory (SilenceSourceFactory below) reads the duration off the query
+// and builds silence. It exists so the track can travel as an ordinary
+// MediaItem — which is what both the notification metadata and Media3's
+// playback resumption are built around.
+private const val SILENCE_SCHEME = "pagevox-silence"
+private const val SILENCE_DURATION_PARAM = "ms"
+
+// Square artwork for pages that declare no image of their own, rendered from
+// the launcher icon. Big enough to stay sharp as the expanded player background.
+private const val FALLBACK_ARTWORK_PX = 512
 
 class PlaybackService : MediaSessionService() {
 
@@ -95,6 +124,16 @@ class PlaybackService : MediaSessionService() {
     private val DEFAULT_DURATION_MS = 60_000L
     private val DURATION_BUFFER_MS = 5_000L
 
+    // PlaybackDataRepository.generation the silent track was last built for.
+    // A mismatch at resume time means the page changed under a paused player.
+    private var loadedGeneration = -1
+    // Generation last written to the resume snapshot, so the snapshot is written
+    // once per page rather than on every seek or skip that rebuilds the track.
+    private var snapshotGeneration = -1
+    // The launcher icon as PNG bytes, rendered on first use. Pages without an
+    // og:image get this as artwork instead of a flat, colourless player.
+    private val fallbackArtwork: ByteArray by lazy { renderFallbackArtwork() }
+
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
@@ -119,9 +158,16 @@ class PlaybackService : MediaSessionService() {
                 setupTtsListeners()
                 Log.d(TAG, "TTS ready; default voice=${userDefaultVoice?.name} (${userDefaultVoice?.locale})")
                 // If the user tapped Play before init completed, honor it now.
-                pendingStartIndex?.let { idx ->
+                val pending = pendingStartIndex
+                if (pending != null) {
                     pendingStartIndex = null
-                    mainHandler.post { startPlayback(idx) }
+                    mainHandler.post { startPlayback(pending) }
+                } else {
+                    // A headphone Play press can start this service cold: the
+                    // player reaches READY (and the service goes foreground) long
+                    // before the engine has bound. resumePlayback() left the
+                    // voice for later — this is later.
+                    mainHandler.post { if (player.playWhenReady) resumePlayback() }
                 }
             } else {
                 Log.e(TAG, "TTS init failed: $status")
@@ -130,6 +176,7 @@ class PlaybackService : MediaSessionService() {
         }
 
         player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(SilenceSourceFactory())
             .setAudioAttributes(AudioAttributes.DEFAULT, true)
             .setHandleAudioBecomingNoisy(true)
             .build()
@@ -332,14 +379,86 @@ class PlaybackService : MediaSessionService() {
 
     @OptIn(UnstableApi::class)
     private fun setupSilentPlayer() {
-        val totalMs = PlaybackDataRepository.totalDurationMs
-        val durationMs = if (totalMs > 0) totalMs + DURATION_BUFFER_MS else DEFAULT_DURATION_MS
-        val source = SilenceMediaSource.Factory()
-            .setDurationUs(durationMs * 1_000L)
-            .createMediaSource()
-        player.setMediaSource(source)
+        player.setMediaItem(currentPageItem())
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.prepare()
+    }
+
+    /**
+     * The silent track for the loaded page, as a MediaItem carrying the page's
+     * title, site and artwork. That metadata is everything the system media
+     * player (notification shade, lock screen, Bluetooth displays) has to show:
+     * without it Android 13+ draws a flat single-colour tile, because it takes
+     * the player's colours from the artwork.
+     *
+     * Also marks the page as the one the track was built for, and makes sure a
+     * resume snapshot of it is on disk — see [maybeSaveSnapshot].
+     */
+    private fun currentPageItem(): MediaItem {
+        val totalMs = PlaybackDataRepository.totalDurationMs
+        val durationMs = if (totalMs > 0) totalMs + DURATION_BUFFER_MS else DEFAULT_DURATION_MS
+        loadedGeneration = PlaybackDataRepository.generation
+        maybeSaveSnapshot()
+
+        val url = PlaybackDataRepository.pageUrl
+        // The manual and other local pages have no host; they're PageVox's own.
+        val site = url?.let { Uri.parse(it).host }?.removePrefix("www.")?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.app_name)
+        val title = PlaybackDataRepository.pageTitle.takeIf { it.isNotBlank() } ?: site
+        val metadata = MediaMetadata.Builder()
+            .setTitle(title)
+            .setDisplayTitle(title)
+            .setArtist(site)
+            .apply {
+                // One or the other: Media3's loader prefers artworkData whenever
+                // it's set, so the page image must go in alone to be used at all.
+                // If that image then fails to load, the player shows no artwork —
+                // the price of not fetching it ourselves.
+                val image = PlaybackDataRepository.imageUrl
+                if (image != null) setArtworkUri(Uri.parse(image))
+                else setArtworkData(fallbackArtwork, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+            }
+            .build()
+        return MediaItem.Builder()
+            .setMediaId(url ?: "pagevox")
+            .setUri(
+                Uri.Builder().scheme(SILENCE_SCHEME).authority("page")
+                    .appendQueryParameter(SILENCE_DURATION_PARAM, durationMs.toString())
+                    .build()
+            )
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
+    /** Write the resume snapshot the first time a page's track is built, off the
+     *  main thread. Pages are re-extracted rarely and snapshots are small, so
+     *  once per page is cheap; once per sentence would not be. */
+    private fun maybeSaveSnapshot() {
+        val generation = PlaybackDataRepository.generation
+        if (generation == snapshotGeneration) return
+        val snapshot = PlaybackDataRepository.snapshot() ?: return
+        snapshotGeneration = generation
+        serviceScope.launch(Dispatchers.IO) { NowPlayingStore(applicationContext).save(snapshot) }
+    }
+
+    /** The launcher icon, background and foreground layers drawn full-bleed
+     *  onto a square — the adaptive icon's own draw() would cut it to the
+     *  launcher's mask shape and leave transparent corners in the player. */
+    private fun renderFallbackArtwork(): ByteArray {
+        val size = FALLBACK_ARTWORK_PX
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        for (layer in intArrayOf(R.drawable.ic_launcher_background, R.drawable.ic_launcher_foreground)) {
+            ContextCompat.getDrawable(this, layer)?.apply {
+                setBounds(0, 0, size, size)
+                draw(canvas)
+            }
+        }
+        return ByteArrayOutputStream().use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            bitmap.recycle()
+            it.toByteArray()
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -355,9 +474,27 @@ class PlaybackService : MediaSessionService() {
      * queued an utterance.
      */
     private fun resumePlayback() {
-        if (!isTtsReady) return
+        // The page was replaced while the player sat paused on the old one —
+        // e.g. headphones resumed page A, then the user opened the app on page B
+        // and pressed Play there. Start the new page where its sentence set
+        // says to, instead of reading B from A's position.
+        if (player.currentMediaItem != null &&
+            loadedGeneration != PlaybackDataRepository.generation &&
+            PlaybackDataRepository.sentences.isNotEmpty()
+        ) {
+            currentSentenceIndex = PlaybackDataRepository.currentIndex
+            setupSilentPlayer()
+            val startMs = PlaybackDataRepository.getSentenceStartMs(currentSentenceIndex)
+            if (startMs > 0) player.seekTo(startMs)
+        }
+        // Silent track first, voice second. On a cold start from a headphone
+        // press the engine is still binding, but the player has to reach READY
+        // promptly regardless: that's what puts the service into the foreground,
+        // and Android kills a service started for the foreground that doesn't
+        // get there within a few seconds.
         ensureSilentPlayer()
         startCallWatch()
+        if (!isTtsReady) return   // the TTS init callback resumes the voice
         if (!tts.isSpeaking) speakNextSentence()
     }
 
@@ -547,6 +684,39 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /**
+     * Get a page into [PlaybackDataRepository] for [CustomSessionCallback.onPlaybackResumption].
+     * Returns false when there's nothing to resume.
+     *
+     * An empty repository means a fresh process — nothing has loaded the user's
+     * preferences either, so speed and voice are read here too, or the resumed
+     * page would come back at 1x in the default voice.
+     */
+    private suspend fun restorePageForResumption(): Boolean {
+        if (PlaybackDataRepository.sentences.isEmpty()) {
+            val snapshot = withContext(Dispatchers.IO) { NowPlayingStore(applicationContext).load() }
+                ?: return false
+            val prefs = settingsRepo.prefsFlow.first()
+            PlaybackDataRepository.speechRate = prefs.speechRate
+            PlaybackDataRepository.selectedVoiceName = prefs.selectedVoice.ifBlank { null }
+            val position = settingsRepo.savedPositionFor(snapshot.url)
+            PlaybackDataRepository.restore(snapshot, position)
+            // It came from disk, so there is nothing to write back.
+            snapshotGeneration = PlaybackDataRepository.generation
+            // Opening the app later should show the page being read, not
+            // whatever was browsed last: a ViewModel created now adopts these
+            // sentences, and it would otherwise pair them with another page.
+            settingsRepo.updateLastUrl(snapshot.url)
+            settingsRepo.updateLastIndex(position)
+        }
+        // Paused on the last sentence, or the page ran out: start it again
+        // rather than resuming into its final line and stopping.
+        if (PlaybackDataRepository.currentIndex >= PlaybackDataRepository.sentences.lastIndex) {
+            PlaybackDataRepository.currentIndex = 0
+        }
+        return PlaybackDataRepository.sentences.isNotEmpty()
+    }
+
     /** Jump [delta] sentences from the current position and (re)start playback.
      *  The service holds the authoritative index, so prev/next are exact. */
     private fun skipSentences(delta: Int) {
@@ -632,6 +802,42 @@ class PlaybackService : MediaSessionService() {
                 .build()
         }
 
+        /**
+         * Play was pressed with nothing loaded — most often a headphone button
+         * after Android stopped the paused service, which by then has also taken
+         * the process with it. The MediaButtonReceiver declared in the manifest
+         * started this service to handle exactly that press.
+         *
+         * Media3 sets whatever this returns on the player and presses play; the
+         * item is our own silent track, so the rest is the ordinary resume path.
+         * The page comes back from the snapshot on disk when the process is new,
+         * or straight from memory when only the service was recycled.
+         */
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val result = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            serviceScope.launch {
+                try {
+                    if (!restorePageForResumption()) {
+                        // Media3 then presses play on an empty player, which does
+                        // nothing. Only reachable if the snapshot was lost.
+                        result.setException(IllegalStateException("Nothing to resume"))
+                        return@launch
+                    }
+                    currentSentenceIndex = PlaybackDataRepository.currentIndex
+                    val item = currentPageItem()
+                    val startMs = PlaybackDataRepository.getSentenceStartMs(currentSentenceIndex)
+                    result.set(MediaSession.MediaItemsWithStartPosition(listOf(item), 0, startMs))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Playback resumption failed", e)
+                    result.setException(e)
+                }
+            }
+            return result
+        }
+
         override fun onPostConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo
@@ -662,6 +868,57 @@ class PlaybackService : MediaSessionService() {
                 "skipPreviousSection" -> mainHandler.post { skipSection(forward = false) }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+    }
+}
+
+/**
+ * The player's only media source factory: every item it is given is one of our
+ * silent tracks (see PlaybackService.currentPageItem), whose URI carries the
+ * duration. Replacing the default factory also means a stray web URI can never
+ * make this player fetch anything.
+ */
+@OptIn(UnstableApi::class)
+private class SilenceSourceFactory : MediaSource.Factory {
+    override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+        val durationMs = mediaItem.localConfiguration?.uri
+            ?.getQueryParameter(SILENCE_DURATION_PARAM)?.toLongOrNull()
+            ?.takeIf { it > 0 } ?: 60_000L
+        return PageSilenceSource(
+            SilenceMediaSource.Factory().setDurationUs(durationMs * 1_000L).createMediaSource(),
+            mediaItem
+        )
+    }
+
+    override fun setDrmSessionManagerProvider(provider: DrmSessionManagerProvider) = this
+    override fun setLoadErrorHandlingPolicy(policy: LoadErrorHandlingPolicy) = this
+    override fun getSupportedTypes(): IntArray = intArrayOf(C.CONTENT_TYPE_OTHER)
+}
+
+/**
+ * Silence that reports *our* MediaItem. SilenceMediaSource always describes
+ * itself with a fixed internal item, and the player takes the current item —
+ * and with it the title and artwork the system shows — from the source's
+ * timeline window, so the window has to be relabelled on the way through.
+ */
+@OptIn(UnstableApi::class)
+private class PageSilenceSource(
+    silence: MediaSource,
+    private val item: MediaItem
+) : WrappingMediaSource(silence) {
+    override fun getMediaItem(): MediaItem = item
+
+    override fun getInitialTimeline(): Timeline? = mediaSource.initialTimeline?.let(::relabel)
+
+    override fun onChildSourceInfoRefreshed(newTimeline: Timeline) {
+        refreshSourceInfo(relabel(newTimeline))
+    }
+
+    private fun relabel(timeline: Timeline): Timeline = object : ForwardingTimeline(timeline) {
+        override fun getWindow(windowIndex: Int, window: Window, defaultPositionProjectionUs: Long): Window {
+            super.getWindow(windowIndex, window, defaultPositionProjectionUs)
+            window.mediaItem = item
+            return window
         }
     }
 }

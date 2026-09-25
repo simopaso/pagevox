@@ -49,6 +49,29 @@ object PlaybackDataRepository {
     var pageUrl: String? = null
         private set
 
+    /** Title of that page, for the media notification and lock screen. Often
+     *  still blank when the sentences are set (the WebView reports the title
+     *  separately), so it is patched in later by [updatePageTitle]. */
+    @Volatile
+    var pageTitle: String = ""
+        private set
+
+    /** The page's lead image (its og:image), used as notification artwork.
+     *  Only ever an http(s) URL — see [setSentences]. */
+    @Volatile
+    var imageUrl: String? = null
+        private set
+
+    /**
+     * Bumped every time the sentence set is replaced or cleared. The service
+     * compares it against the generation its silent track was built for, which is
+     * how it notices the page changing under a paused player, and how it knows the
+     * resume snapshot on disk needs rewriting — once per page, not per sentence.
+     */
+    @Volatile
+    var generation: Int = 0
+        private set
+
     /**
      * The sentence index currently being read, published by the playback service
      * as it speaks. This is the authoritative resume point *within the process*:
@@ -96,8 +119,11 @@ object PlaybackDataRepository {
         startIndex: Int = 0,
         spokenSentences: List<String> = emptyList(),
         sectionStarts: List<Int> = emptyList(),
-        sectionTitles: List<String> = emptyList()
+        sectionTitles: List<String> = emptyList(),
+        title: String = "",
+        imageUrl: String? = null
     ) {
+        generation++
         _sentences.clear()
         _sentences.addAll(newSentences)
         _spokenSentences.clear()
@@ -117,6 +143,13 @@ object PlaybackDataRepository {
         }
         this.language = language
         this.pageUrl = pageUrl
+        this.pageTitle = title
+        // The image URL comes from the page, and the media session hands it to
+        // a loader that also reads file:// and content:// URIs. Anything but a
+        // web URL would let a page make this app read local files as "artwork".
+        this.imageUrl = imageUrl?.takeIf {
+            it.length <= 2048 && (it.startsWith("https://") || it.startsWith("http://"))
+        }
         // Seed the resume point for this freshly-loaded page. On a cold start the
         // caller passes the position restored from disk; on a new page it's 0.
         currentIndex = startIndex.coerceIn(0, (newSentences.size - 1).coerceAtLeast(0))
@@ -127,7 +160,44 @@ object PlaybackDataRepository {
         rebuildTimeline()
     }
 
+    /** Late-arriving title for the loaded page; ignored if [url] isn't it. */
+    fun updatePageTitle(url: String, title: String) {
+        if (url == pageUrl && title.isNotBlank()) pageTitle = title
+    }
+
+    /** Everything needed to read the loaded page again without a WebView, or
+     *  null when nothing is loaded. Copies, so it can be serialized off the
+     *  main thread while the lists keep changing. */
+    internal fun snapshot(): NowPlaying? {
+        val url = pageUrl ?: return null
+        if (_sentences.isEmpty()) return null
+        return NowPlaying(
+            url = url,
+            title = pageTitle,
+            language = language,
+            sentences = _sentences.toList(),
+            spoken = _spokenSentences.toList(),
+            sectionStarts = _sectionStarts.toList(),
+            sectionTitles = _sectionTitles.toList(),
+            imageUrl = imageUrl
+        )
+    }
+
+    /** Reload a page from [snapshot], positioned at [startIndex]. */
+    internal fun restore(snapshot: NowPlaying, startIndex: Int) = setSentences(
+        snapshot.sentences,
+        language = snapshot.language,
+        pageUrl = snapshot.url,
+        startIndex = startIndex,
+        spokenSentences = snapshot.spoken,
+        sectionStarts = snapshot.sectionStarts,
+        sectionTitles = snapshot.sectionTitles,
+        title = snapshot.title,
+        imageUrl = snapshot.imageUrl
+    )
+
     fun clear() {
+        generation++
         _sentences.clear()
         _spokenSentences.clear()
         _baseDurationsMs.clear()
@@ -137,6 +207,8 @@ object PlaybackDataRepository {
         _totalDurationMs = 0L
         language = null
         pageUrl = null
+        pageTitle = ""
+        imageUrl = null
         currentIndex = 0
     }
 
