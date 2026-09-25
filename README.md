@@ -10,7 +10,8 @@
 ## Features
 
 - **Read any page aloud** — extracts the readable text from a web page or plain-text document and speaks it with the system TTS engine.
-- **Background playback** — a Media3 `MediaSessionService` keeps reading when you leave the app, with play/pause, skip, and a progress bar in the notification and on the lock screen.
+- **Background playback** — a Media3 `MediaSessionService` keeps reading when you leave the app, with play/pause, skip, and a progress bar in the notification and on the lock screen. The player shows the page's title, site and lead image.
+- **Resume from your headphones** — press Play on headphones or a car stereo to carry on where you stopped, even hours later after Android has closed the paused app.
 - **Tap to start anywhere** — tap a paragraph to begin reading from that sentence.
 - **Follow-along** — the sentence being read is highlighted on the page and auto-scrolled into view, karaoke style. Toggle it off for audio-only.
 - **Reader mode** — strips navigation, ads, and clutter for distraction-free reading and cleaner narration.
@@ -24,6 +25,7 @@
 - **Content-aware voice** — picks a TTS voice that matches the page's declared language while honoring your system default voice, or pick a specific voice in-app.
 - **Force dark mode** — render any website or text file with a dark appearance.
 - **Bookmarks & history** — save pages, revisit recent ones, and get address-bar autocomplete from your history.
+- **Backup & restore** — save bookmarks, history, reading positions and settings to a file of your own, and restore them on a new phone or after a reinstall.
 - **Built-in user manual** — ships inside the app, is the default home page until you set your own, and is itself a normal page the app reads aloud. Reachable any time from the overflow menu.
 - **Localised** — interface and manual in English, Finnish, Swedish, German and French, following the system language, with a per-app language override on Android 13+. Each manual declares its own language, so it is narrated by a matching voice.
 - **Quick navigation** — back/forward, up-one-folder, home, and a full-width address bar.
@@ -54,9 +56,11 @@ The app runs the UI and a media-session service in the same process, bridged by 
 | `WebViewContainer.kt` | WebView host: page lifecycle, tap-to-seek, follow-along highlight, state save/restore. |
 | `PageScripts.kt` | The JavaScript injected into pages: text extraction (with the source element's tag, for sections), tap detection, reader mode, sentence highlighting. |
 | `NarrationText.kt` | Turns extracted blocks into the sentence set: cleans the text for speech and maps each cleaned sentence back to the verbatim page text it came from. |
-| `SettingsRepository.kt` | DataStore-backed preferences, history, and bookmarks. |
+| `SettingsRepository.kt` | DataStore-backed preferences, history, and bookmarks, plus backup export/import. |
+| `LibraryBackup.kt` | The backup file format: settings, history and bookmarks as versioned JSON. |
+| `NowPlaying.kt` | On-disk snapshot of the page being read, so a headphone Play press can resume it in a fresh process. |
 | `UrlUtils.kt` | Address-bar input resolution and URL normalization helpers. |
-| `PlaybackService.kt` | A Media3 `MediaSessionService` that owns the `TextToSpeech` engine, speaks sentences, and drives a silent ExoPlayer track so the notification's progress bar reflects reading position. |
+| `PlaybackService.kt` | A Media3 `MediaSessionService` that owns the `TextToSpeech` engine, speaks sentences, and drives a silent ExoPlayer track so the notification's progress bar reflects reading position. Resumes the last page from its snapshot when a headphone Play press restarts it. |
 | `PlaybackDataRepository.kt` | In-process bridge between UI and service: the sentence list (verbatim and spoken forms) with estimated durations, section boundaries, page language, speech rate, and the selected voice. |
 
 **How playback works:** the activity extracts the page text in the WebView, splits it into sentences, and hands them to `PlaybackDataRepository`. It then sends a custom session command to the service, which speaks each sentence via TTS and seeks a silent audio track to that sentence's estimated start — so the system media UI shows a meaningful, scrubbable progress bar. Sentence-boundary callbacks broadcast the active index back to the UI to drive the highlight and slider.
@@ -87,7 +91,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.19**.
+Personal project, actively developed. Current version: **2.20**.
 
 ## Supporting development
 

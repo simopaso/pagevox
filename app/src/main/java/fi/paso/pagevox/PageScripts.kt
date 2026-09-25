@@ -55,7 +55,16 @@ internal fun extractTextJs(readerMode: Boolean) = """
         var m = document.querySelector('meta[http-equiv="content-language" i]');
         if (m && m.content) lang = m.content.trim().split(',')[0].trim();
     }
-    return JSON.stringify({ lang: lang, texts: texts, tags: tags });
+    // The page's lead image, for the media notification's artwork. Resolved
+    // against the document so a relative og:image still works; the Kotlin side
+    // accepts only http(s) whatever comes back from here.
+    var image = '';
+    var im = document.querySelector('meta[property="og:image" i], meta[name="og:image" i], ' +
+        'meta[name="twitter:image" i], meta[property="twitter:image" i]');
+    if (im && im.content) {
+        try { image = new URL(im.content.trim(), document.baseURI).href; } catch (e) {}
+    }
+    return JSON.stringify({ lang: lang, texts: texts, tags: tags, image: image });
 })();
 """.trimIndent()
 
@@ -245,19 +254,24 @@ data class PageBlock(val text: String, val tag: String) {
     val isHeading: Boolean get() = tag.length == 2 && tag[0] == 'h' && tag[1] in '1'..'6'
 }
 
-internal fun extractTexts(webView: WebView?, readerMode: Boolean, onResult: (lang: String?, blocks: List<PageBlock>) -> Unit) {
+internal fun extractTexts(
+    webView: WebView?,
+    readerMode: Boolean,
+    onResult: (lang: String?, blocks: List<PageBlock>, imageUrl: String?) -> Unit
+) {
     webView?.evaluateJavascript(extractTextJs(readerMode)) { result ->
         try {
             val jsonStr = JSONTokener(result).nextValue() as String
             val obj = JSONObject(jsonStr)
             val lang = obj.optString("lang").ifBlank { null }
+            val image = obj.optString("image").ifBlank { null }
             val arr = obj.getJSONArray("texts")
             // tags is absent only if a cached script from an older build ran;
             // treat a missing entry as an untagged block rather than failing.
             val tags = obj.optJSONArray("tags")
             onResult(lang, (0 until arr.length()).map { i ->
                 PageBlock(arr.getString(i), tags?.optString(i).orEmpty())
-            })
+            }, image)
         } catch (e: Exception) {
             Log.e(TAG, "Text extraction failed", e)
         }

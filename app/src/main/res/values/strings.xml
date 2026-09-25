@@ -55,6 +55,23 @@
     <string name="contents_no_sections">This page has no headings</string>
     <string name="contents_nothing_loaded">Press play — the page\'s sections appear here</string>
 
+    <!-- Backup: Settings rows, the restore confirmation, and result toasts.
+         The counts line uses a "label: number" shape on purpose, so no
+         language needs plural forms for it. -->
+    <string name="settings_export">Back up to a file</string>
+    <string name="settings_export_summary">Bookmarks, history, reading positions and settings</string>
+    <string name="settings_import">Restore from a file</string>
+    <string name="settings_import_summary">Replaces them with a PageVox backup</string>
+    <string name="import_confirm_title">Restore from backup?</string>
+    <string name="import_confirm_message">Your bookmarks, history, reading positions and settings will be replaced with the ones in the backup.</string>
+    <string name="import_confirm_counts">Bookmarks: %1$d · Pages in history: %2$d</string>
+    <string name="import_confirm">Restore</string>
+    <string name="export_done">Backup saved</string>
+    <string name="export_failed">Couldn\'t save the backup</string>
+    <string name="import_done">Backup restored</string>
+    <string name="import_failed">Couldn\'t restore the backup</string>
+    <string name="import_invalid">That file isn\'t a PageVox backup</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">Exit PageVox?</string>
     <string name="exit_message">There\'s no previous page to go back to. Close the app?</string>

@@ -63,6 +63,22 @@
                 <data android:scheme="https" />
             </intent-filter>
         </activity>
+        <!-- Receives a headphone / car / Bluetooth Play press once the paused
+             playback service is gone. Android stops a paused media service
+             within about a minute (it is no longer in the foreground), which
+             used to leave the Play button with nothing to talk to. Media3
+             registers this receiver with the session, so the system remembers
+             it after the session is released; on a press it restarts the
+             service, which resumes the last page from its on-disk snapshot
+             (PlaybackService.onPlaybackResumption). Must be the only
+             MEDIA_BUTTON receiver in the app, or Media3 refuses to pick one. -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
         <!-- The playback service. -->
         <service
             android:name=".PlaybackService"

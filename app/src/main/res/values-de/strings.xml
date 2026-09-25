@@ -42,6 +42,21 @@
     <string name="contents_no_sections">Diese Seite hat keine Überschriften</string>
     <string name="contents_nothing_loaded">Drücke auf Wiedergabe — die Abschnitte der Seite erscheinen hier</string>
 
+    <!-- Sicherung -->
+    <string name="settings_export">In einer Datei sichern</string>
+    <string name="settings_export_summary">Lesezeichen, Verlauf, Lesepositionen und Einstellungen</string>
+    <string name="settings_import">Aus einer Datei wiederherstellen</string>
+    <string name="settings_import_summary">Ersetzt sie durch eine PageVox-Sicherung</string>
+    <string name="import_confirm_title">Aus der Sicherung wiederherstellen?</string>
+    <string name="import_confirm_message">Deine Lesezeichen, dein Verlauf, deine Lesepositionen und Einstellungen werden durch die aus der Sicherung ersetzt.</string>
+    <string name="import_confirm_counts">Lesezeichen: %1$d · Seiten im Verlauf: %2$d</string>
+    <string name="import_confirm">Wiederherstellen</string>
+    <string name="export_done">Sicherung gespeichert</string>
+    <string name="export_failed">Die Sicherung konnte nicht gespeichert werden</string>
+    <string name="import_done">Sicherung wiederhergestellt</string>
+    <string name="import_failed">Die Sicherung konnte nicht wiederhergestellt werden</string>
+    <string name="import_invalid">Diese Datei ist keine PageVox-Sicherung</string>
+
     <!-- Exit confirmation -->
     <string name="exit_title">PageVox beenden?</string>
     <string name="exit_message">Es gibt keine vorherige Seite, zu der du zurückkehren könntest. App schließen?</string>

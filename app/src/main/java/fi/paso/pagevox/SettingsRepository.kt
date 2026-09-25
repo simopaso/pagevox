@@ -1,15 +1,18 @@
 package fi.paso.pagevox
 
 import android.content.Context
+import android.net.Uri
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import org.json.JSONObject
 import java.util.Locale
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
@@ -198,6 +201,91 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun clearHistory() = context.dataStore.edit { it.remove(Keys.HISTORY) }
 
+    /** The saved reading position for [url]: its history entry's, or failing
+     *  that the global last index when [url] is the last page. Used by the
+     *  playback service to resume a page with no ViewModel around — the global
+     *  index alone isn't safe for that, because navigating to another page
+     *  rewrites it for the new page. */
+    suspend fun savedPositionFor(url: String): Int {
+        val prefs = context.dataStore.data.first()
+        val key = normalizeUrlForCompare(url)
+        decodePages(prefs[Keys.HISTORY]).firstOrNull { normalizeUrlForCompare(it.url) == key }
+            ?.let { return it.position }
+        val last = prefs[Keys.LAST_URL]
+        return if (last != null && normalizeUrlForCompare(last) == key) {
+            prefs[Keys.LAST_SENTENCE_INDEX] ?: 0
+        } else 0
+    }
+
+    // -- Backup ---------------------------------------------------------------
+
+    /** Write every setting, the history and the bookmarks to [uri] (a document
+     *  the user picked through the system file picker). Raw stored values, not
+     *  the defaulted ones in [prefsFlow]: an unset home page must stay unset in
+     *  the backup, or restoring it would pin the manual to whatever language the
+     *  exporting phone happened to use. */
+    suspend fun exportBackupTo(uri: Uri, appVersion: String, exportedAt: String) {
+        val prefs = context.dataStore.data.first()
+        val backup = LibraryBackup(
+            homeUrl = prefs[Keys.HOME_URL],
+            lastUrl = prefs[Keys.LAST_URL],
+            lastSentenceIndex = prefs[Keys.LAST_SENTENCE_INDEX],
+            forceDarkWeb = prefs[Keys.FORCE_DARK_WEB],
+            textZoom = prefs[Keys.TEXT_ZOOM],
+            speechRate = prefs[Keys.SPEECH_RATE],
+            readerMode = prefs[Keys.READER_MODE],
+            followAlong = prefs[Keys.FOLLOW_ALONG],
+            selectedVoice = prefs[Keys.SELECTED_VOICE],
+            history = decodePages(prefs[Keys.HISTORY]),
+            bookmarks = decodePages(prefs[Keys.BOOKMARKS])
+        )
+        val json = backup.toJson(appVersion, exportedAt)
+        withContext(Dispatchers.IO) {
+            // "wt" truncates: without it, overwriting an existing larger file
+            // through some document providers leaves its tail behind as garbage.
+            val out = context.contentResolver.openOutputStream(uri, "wt")
+                ?: throw java.io.IOException("No output stream for $uri")
+            out.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+        }
+    }
+
+    /** Read and validate a backup from [uri] without applying it — the caller
+     *  shows what's in it and asks before anything is overwritten. Throws
+     *  [InvalidBackupException] for anything that isn't a PageVox backup. */
+    internal suspend fun readBackupFrom(uri: Uri): LibraryBackup = withContext(Dispatchers.IO) {
+        val text = try {
+            context.contentResolver.openInputStream(uri)?.use {
+                // A real backup is tens of KB. Refusing anything absurd keeps a
+                // mis-picked video file from being read into memory whole.
+                val bytes = it.readBytes()
+                if (bytes.size > MAX_BACKUP_BYTES) throw InvalidBackupException("Too large")
+                String(bytes, Charsets.UTF_8)
+            } ?: throw InvalidBackupException("Unreadable")
+        } catch (e: InvalidBackupException) {
+            throw e
+        } catch (e: Exception) {
+            throw InvalidBackupException("Unreadable", e)
+        }
+        parseLibraryBackup(text)
+    }
+
+    /** Replace the library with [backup], in a single DataStore edit so a
+     *  process death mid-restore can't leave half of each. Fields the backup
+     *  doesn't carry keep their current value. */
+    internal suspend fun importBackup(backup: LibraryBackup) = context.dataStore.edit { prefs ->
+        backup.homeUrl?.let { prefs[Keys.HOME_URL] = it }
+        backup.lastUrl?.let { prefs[Keys.LAST_URL] = it }
+        backup.lastSentenceIndex?.let { prefs[Keys.LAST_SENTENCE_INDEX] = it }
+        backup.forceDarkWeb?.let { prefs[Keys.FORCE_DARK_WEB] = it }
+        backup.textZoom?.let { prefs[Keys.TEXT_ZOOM] = it }
+        backup.speechRate?.let { prefs[Keys.SPEECH_RATE] = it }
+        backup.readerMode?.let { prefs[Keys.READER_MODE] = it }
+        backup.followAlong?.let { prefs[Keys.FOLLOW_ALONG] = it }
+        backup.selectedVoice?.let { prefs[Keys.SELECTED_VOICE] = it }
+        prefs[Keys.HISTORY] = encodePages(backup.history.take(HISTORY_LIMIT))
+        prefs[Keys.BOOKMARKS] = encodePages(backup.bookmarks)
+    }
+
     suspend fun addBookmark(page: WebPage) = context.dataStore.edit { prefs ->
         val previous = decodePages(prefs[Keys.BOOKMARKS]).filter { it.url != page.url }
         prefs[Keys.BOOKMARKS] = encodePages(listOf(page) + previous)
@@ -209,37 +297,16 @@ class SettingsRepository(private val context: Context) {
 
     private companion object {
         const val HISTORY_LIMIT = 100
+        const val MAX_BACKUP_BYTES = 5 * 1024 * 1024
 
-        fun encodePages(pages: List<WebPage>): String {
-            val arr = JSONArray()
-            pages.forEach {
-                arr.put(
-                    JSONObject()
-                        .put("url", it.url)
-                        .put("title", it.title)
-                        .put("position", it.position)
-                        .put("total", it.sentenceCount)
-                        .put("remainingMs", it.remainingMs)
-                )
-            }
-            return arr.toString()
-        }
+        // Same encoding as the backup file (see LibraryBackup.kt), so a page
+        // round-trips through export and import exactly as it is stored.
+        fun encodePages(pages: List<WebPage>): String = pagesToJson(pages).toString()
 
         fun decodePages(raw: String?): List<WebPage> {
             if (raw.isNullOrBlank()) return emptyList()
             return try {
-                val arr = JSONArray(raw)
-                (0 until arr.length()).map { i ->
-                    val o = arr.getJSONObject(i)
-                    val url = o.getString("url")
-                    WebPage(
-                        url,
-                        o.optString("title", url).ifBlank { url },
-                        o.optInt("position", 0),
-                        o.optInt("total", 0),
-                        o.optLong("remainingMs", 0L)
-                    )
-                }
+                pagesFromJson(JSONArray(raw))
             } catch (e: Exception) {
                 emptyList()
             }

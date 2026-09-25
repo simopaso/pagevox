@@ -1,5 +1,7 @@
 package fi.paso.pagevox
 
+import android.net.Uri
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -12,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
 
 class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var url by mutableStateOf("")
@@ -77,15 +80,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         }
         viewModelScope.launch {
             val prefs = repo.prefsFlow.first()
-            homeUrl = prefs.homeUrl
-            forceDarkWeb = prefs.forceDarkWeb
-            textZoom = prefs.textZoom
-            speechRate = prefs.speechRate
-            PlaybackDataRepository.speechRate = prefs.speechRate
-            readerMode = prefs.readerMode
-            followAlong = prefs.followAlong
-            selectedVoice = prefs.selectedVoice
-            PlaybackDataRepository.selectedVoiceName = prefs.selectedVoice.ifBlank { null }
+            applyPreferences(prefs)
             // Only restore the saved page if a share/VIEW intent hasn't already
             // set a URL (loadUrl runs synchronously in onCreate, before this).
             if (url.isEmpty()) {
@@ -175,6 +170,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     fun onPageTitle(pageUrl: String, title: String) {
         if (title.isBlank()) return
         if (pageUrl == url) currentPageTitle = title
+        PlaybackDataRepository.updatePageTitle(pageUrl, title)
         viewModelScope.launch { repo.updatePageTitle(pageUrl, title) }
     }
 
@@ -251,7 +247,86 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         viewModelScope.launch { repo.updateSelectedVoice(name) }
     }
 
-    fun onTextsExtracted(lang: String?, blocks: List<PageBlock>, onReadyToPlay: () -> Unit) {
+    /** Push stored preferences into UI state and the playback singleton.
+     *  Shared by startup and by a restore, which changes them underneath a
+     *  running app. */
+    private fun applyPreferences(prefs: UserPreferences) {
+        homeUrl = prefs.homeUrl
+        forceDarkWeb = prefs.forceDarkWeb
+        textZoom = prefs.textZoom
+        speechRate = prefs.speechRate
+        PlaybackDataRepository.speechRate = prefs.speechRate
+        readerMode = prefs.readerMode
+        followAlong = prefs.followAlong
+        selectedVoice = prefs.selectedVoice
+        PlaybackDataRepository.selectedVoiceName = prefs.selectedVoice.ifBlank { null }
+    }
+
+    // -- Backup ---------------------------------------------------------------
+
+    /** A backup that has been read and validated, waiting for the user to
+     *  confirm it may replace their library. Null when no restore is pending. */
+    internal var pendingImport by mutableStateOf<LibraryBackup?>(null)
+        private set
+
+    /** Write a backup to [uri], chosen through the system file picker. */
+    fun exportLibrary(uri: Uri, appVersion: String, onDone: (success: Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = try {
+                repo.exportBackupTo(uri, appVersion, Instant.now().toString())
+                true
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Backup export failed", e)
+                false
+            }
+            onDone(ok)
+        }
+    }
+
+    /** Read and validate [uri] into [pendingImport]. Nothing is overwritten
+     *  here — that waits for [confirmImport], after the user has seen what the
+     *  file contains. */
+    fun readImport(uri: Uri, onInvalid: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                pendingImport = repo.readBackupFrom(uri)
+            } catch (e: Exception) {
+                Log.w("MainViewModel", "Not a usable backup: $uri", e)
+                onInvalid()
+            }
+        }
+    }
+
+    fun cancelImport() {
+        pendingImport = null
+    }
+
+    /** Replace the library with [pendingImport]. History and bookmarks refresh
+     *  on their own through their flows; the preferences read at startup have
+     *  to be re-applied, or the old speed and zoom would stay in force until the
+     *  next launch. */
+    fun confirmImport(onDone: (success: Boolean) -> Unit) {
+        val backup = pendingImport ?: return
+        pendingImport = null
+        viewModelScope.launch {
+            val ok = try {
+                repo.importBackup(backup)
+                applyPreferences(repo.prefsFlow.first())
+                true
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Backup import failed", e)
+                false
+            }
+            onDone(ok)
+        }
+    }
+
+    fun onTextsExtracted(
+        lang: String?,
+        blocks: List<PageBlock>,
+        imageUrl: String?,
+        onReadyToPlay: () -> Unit
+    ) {
         viewModelScope.launch {
             isLoading = true
             val result = withContext(Dispatchers.Default) {
@@ -271,7 +346,10 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
                     startIndex = initialIndex,
                     spokenSentences = result.spoken,
                     sectionStarts = result.sectionStarts,
-                    sectionTitles = result.sectionTitles
+                    sectionTitles = result.sectionTitles,
+                    // For the media notification (and the resume snapshot).
+                    title = currentPageTitle,
+                    imageUrl = imageUrl
                 )
                 onReadyToPlay()
             }
