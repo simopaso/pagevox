@@ -236,6 +236,12 @@ class PlaybackService : MediaSessionService() {
             getPendingIntent(0, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
 
+        // Media3 (1.11 here) keeps a paused session in the foreground for
+        // DEFAULT_FOREGROUND_SERVICE_TIMEOUT_MS (10 minutes), so the notification
+        // and lock-screen controls survive a pause instead of vanishing within a
+        // minute. After that Android is free to stop the service, and a headphone
+        // Play press goes through onPlaybackResumption instead. The default is
+        // also the maximum Media3 allows, so there is nothing to configure.
         mediaSession = MediaSession.Builder(this, TtsSeekingPlayer())
             .setSessionActivity(pendingIntent)
             .setCallback(CustomSessionCallback())
@@ -399,12 +405,20 @@ class PlaybackService : MediaSessionService() {
         val durationMs = if (totalMs > 0) totalMs + DURATION_BUFFER_MS else DEFAULT_DURATION_MS
         loadedGeneration = PlaybackDataRepository.generation
         maybeSaveSnapshot()
+        return pageItem(
+            url = PlaybackDataRepository.pageUrl,
+            pageTitle = PlaybackDataRepository.pageTitle,
+            imageUrl = PlaybackDataRepository.imageUrl,
+            durationMs = durationMs
+        )
+    }
 
-        val url = PlaybackDataRepository.pageUrl
+    /** The MediaItem for a page, built from its parts and touching nothing. */
+    private fun pageItem(url: String?, pageTitle: String, imageUrl: String?, durationMs: Long): MediaItem {
         // The manual and other local pages have no host; they're PageVox's own.
         val site = url?.let { Uri.parse(it).host }?.removePrefix("www.")?.takeIf { it.isNotBlank() }
             ?: getString(R.string.app_name)
-        val title = PlaybackDataRepository.pageTitle.takeIf { it.isNotBlank() } ?: site
+        val title = readableTitle(pageTitle, url) ?: site
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
             .setDisplayTitle(title)
@@ -414,8 +428,7 @@ class PlaybackService : MediaSessionService() {
                 // it's set, so the page image must go in alone to be used at all.
                 // If that image then fails to load, the player shows no artwork —
                 // the price of not fetching it ourselves.
-                val image = PlaybackDataRepository.imageUrl
-                if (image != null) setArtworkUri(Uri.parse(image))
+                if (imageUrl != null) setArtworkUri(Uri.parse(imageUrl))
                 else setArtworkData(fallbackArtwork, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
             }
             .build()
@@ -717,6 +730,26 @@ class PlaybackService : MediaSessionService() {
         return PlaybackDataRepository.sentences.isNotEmpty()
     }
 
+    /**
+     * Answer a metadata-only resumption request: which page would resume, read
+     * without restoring it, writing prefs or touching the player. Artwork is
+     * the bundled icon rather than the page image, because the Javadoc warns
+     * the network may not be up yet (this can be asked during boot).
+     */
+    @OptIn(UnstableApi::class)
+    private suspend fun describeResumableItem(
+        result: SettableFuture<MediaSession.MediaItemsWithStartPosition>
+    ) {
+        val snapshot = PlaybackDataRepository.snapshot()
+            ?: withContext(Dispatchers.IO) { NowPlayingStore(applicationContext).load() }
+        if (snapshot == null) {
+            result.setException(IllegalStateException("Nothing to resume"))
+            return
+        }
+        val item = pageItem(snapshot.url, snapshot.title, imageUrl = null, durationMs = DEFAULT_DURATION_MS)
+        result.set(MediaSession.MediaItemsWithStartPosition(listOf(item), 0, 0L))
+    }
+
     /** Jump [delta] sentences from the current position and (re)start playback.
      *  The service holds the authoritative index, so prev/next are exact. */
     private fun skipSentences(delta: Int) {
@@ -755,12 +788,11 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        // Keep the service alive while actively playing (user may still be listening).
-        // Stop it when paused so we don't leave an idle foreground service forever.
-        if (!player.playWhenReady) stopSelf()
-        super.onTaskRemoved(rootIntent)
-    }
+    // No onTaskRemoved override. Swiping PageVox out of Recents should keep a
+    // read going but end a paused one, and that is exactly Media3's default: it stops the service unless a session is actually playing, via
+    // pauseAllPlayersAndStopSelf(), which also cancels the paused-foreground
+    // window described at the MediaSession below. A hand-rolled stopSelf()
+    // here would skip that and leave the window running.
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(callWatchRunnable)
@@ -782,23 +814,39 @@ class PlaybackService : MediaSessionService() {
     @OptIn(UnstableApi::class)
     private inner class CustomSessionCallback : MediaSession.Callback {
 
+        /**
+         * Every controller keeps full playback control — headphones, Bluetooth
+         * and car head units, watches, the system media player — exactly as
+         * before. Only PageVox's own custom commands (start at a sentence, stop,
+         * section skips) are limited to *trusted* controllers: this app, the
+         * system, and holders of media-control or notification-listener access.
+         * Nothing else has a reason to drive the reader, and until now any
+         * installed app could.
+         *
+         * Built from the constants rather than super.onConnect(): in Media3 1.11
+         * the default callback returns empty command sets tagged "not
+         * implemented" for the session to substitute, so extending it would
+         * quietly drop the default session commands.
+         */
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
-            val sessionCommands = super.onConnect(session, controller)
-                .availableSessionCommands.buildUpon()
-                .add(SessionCommand("playSentences", Bundle.EMPTY))
-                .add(SessionCommand("updateIndex",   Bundle.EMPTY))
-                .add(SessionCommand("playbackEnded", Bundle.EMPTY))
-                .add(SessionCommand("stopPlayback",  Bundle.EMPTY))
-                .add(SessionCommand("skipNext",      Bundle.EMPTY))
-                .add(SessionCommand("skipPrevious",  Bundle.EMPTY))
-                .add(SessionCommand("skipNextSection",     Bundle.EMPTY))
-                .add(SessionCommand("skipPreviousSection", Bundle.EMPTY))
-                .build()
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(sessionCommands)
+            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+            if (controller.isTrusted) {
+                sessionCommands
+                    .add(SessionCommand("playSentences", Bundle.EMPTY))
+                    .add(SessionCommand("updateIndex",   Bundle.EMPTY))
+                    .add(SessionCommand("playbackEnded", Bundle.EMPTY))
+                    .add(SessionCommand("stopPlayback",  Bundle.EMPTY))
+                    .add(SessionCommand("skipNext",      Bundle.EMPTY))
+                    .add(SessionCommand("skipPrevious",  Bundle.EMPTY))
+                    .add(SessionCommand("skipNextSection",     Bundle.EMPTY))
+                    .add(SessionCommand("skipPreviousSection", Bundle.EMPTY))
+            }
+            return MediaSession.ConnectionResult.AcceptedResultBuilder()
+                .setAvailableSessionCommands(sessionCommands.build())
+                .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
                 .build()
         }
 
@@ -812,12 +860,21 @@ class PlaybackService : MediaSessionService() {
          * item is our own silent track, so the rest is the ordinary resume path.
          * The page comes back from the snapshot on disk when the process is new,
          * or straight from memory when only the service was recycled.
+         *
+         * With [isForPlayback] false nothing is about to play: the system only
+         * wants to describe what *would* resume (e.g. a resume card after
+         * reboot), so that branch must not change any state.
          */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo
+            controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val result = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            if (!isForPlayback) {
+                serviceScope.launch { describeResumableItem(result) }
+                return result
+            }
             serviceScope.launch {
                 try {
                     if (!restorePageForResumption()) {

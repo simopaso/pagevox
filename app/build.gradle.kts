@@ -21,9 +21,9 @@ android {
         // The target Android API level for the app.
         targetSdk = 36
         // An internal version number for the app.
-        versionCode = 32
+        versionCode = 33
         // A user-facing version number for the app.
-        versionName = "2.20"
+        versionName = "2.21"
 
         // The fully qualified class name of the test instrumentation runner.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -77,9 +77,8 @@ android {
 
 dependencies {
     // media3 for media playback
-    implementation("androidx.media3:media3-exoplayer:1.4.0")
-    implementation("androidx.media3:media3-session:1.4.0")
-    implementation("androidx.media3:media3-ui:1.4.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-session:1.11.1")
 
     // Core Kotlin extensions
     implementation(libs.androidx.core.ktx)

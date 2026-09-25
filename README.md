@@ -10,7 +10,7 @@
 ## Features
 
 - **Read any page aloud** — extracts the readable text from a web page or plain-text document and speaks it with the system TTS engine.
-- **Background playback** — a Media3 `MediaSessionService` keeps reading when you leave the app, with play/pause, skip, and a progress bar in the notification and on the lock screen. The player shows the page's title, site and lead image.
+- **Background playback** — a Media3 `MediaSessionService` keeps reading when you leave the app, with play/pause, skip, and a progress bar in the notification and on the lock screen. The player shows the page's title, site and lead image, and stays for ten minutes after you pause.
 - **Resume from your headphones** — press Play on headphones or a car stereo to carry on where you stopped, even hours later after Android has closed the paused app.
 - **Tap to start anywhere** — tap a paragraph to begin reading from that sentence.
 - **Follow-along** — the sentence being read is highlighted on the page and auto-scrolled into view, karaoke style. Toggle it off for audio-only.
@@ -91,7 +91,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.20**.
+Personal project, actively developed. Current version: **2.21**.
 
 ## Supporting development
 
