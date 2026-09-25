@@ -60,3 +60,26 @@ internal fun normalizeUrlForCompare(u: String): String = try {
         if (q != null) append('?').append(q)
     }
 } catch (e: Exception) { u }
+
+/**
+ * A human title for the media notification. Plain-text files and other pages
+ * without a `<title>` get their URL reported as the title by WebView, which put
+ * "https://example.com/books/chapter-01.txt" in full on the lock screen. A title
+ * that is really a URL is cut down to its file name ("chapter-01.txt"), or the
+ * site when the path has none. Null when there's nothing usable, so the caller
+ * can fall back to the site name.
+ *
+ * java.net.URI rather than android.net.Uri so this stays testable on the JVM;
+ * its getPath() also undoes percent-encoding, so "my%20notes.txt" reads as
+ * "my notes.txt".
+ */
+internal fun readableTitle(pageTitle: String, pageUrl: String?): String? {
+    val title = pageTitle.trim()
+    if (title.isEmpty()) return null
+    val looksLikeUrl = title == pageUrl?.trim() ||
+        Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://").containsMatchIn(title)
+    if (!looksLikeUrl) return title
+    val uri = try { java.net.URI(title) } catch (e: Exception) { return null }
+    uri.path?.split('/')?.lastOrNull { it.isNotBlank() }?.let { return it }
+    return uri.host?.removePrefix("www.")?.takeIf { it.isNotBlank() }
+}

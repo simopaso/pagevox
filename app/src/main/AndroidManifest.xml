@@ -64,9 +64,10 @@
             </intent-filter>
         </activity>
         <!-- Receives a headphone / car / Bluetooth Play press once the paused
-             playback service is gone. Android stops a paused media service
-             within about a minute (it is no longer in the foreground), which
-             used to leave the Play button with nothing to talk to. Media3
+             playback service is gone. Media3 keeps a paused session in the
+             foreground for ten minutes; after that Android stops the service
+             within about a minute, which used to leave the Play button with
+             nothing to talk to. Media3
              registers this receiver with the session, so the system remembers
              it after the session is released; on a press it restarts the
              service, which resumes the last page from its on-disk snapshot
