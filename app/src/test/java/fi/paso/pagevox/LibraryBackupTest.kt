@@ -24,6 +24,7 @@ class LibraryBackupTest {
             readerMode = true,
             followAlong = false,
             selectedVoice = "fi-fi-x-fia-local",
+            continueToNextFile = false,
             history = pages,
             bookmarks = pages.take(1)
         )

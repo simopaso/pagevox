@@ -14,6 +14,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
+import android.webkit.CookieManager
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
@@ -32,6 +33,7 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.SilenceMediaSource
 import androidx.media3.exoplayer.source.WrappingMediaSource
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -41,6 +43,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
@@ -133,6 +136,17 @@ class PlaybackService : MediaSessionService() {
     // The launcher icon as PNG bytes, rendered on first use. Pages without an
     // og:image get this as artwork instead of a flat, colourless player.
     private val fallbackArtwork: ByteArray by lazy { renderFallbackArtwork() }
+    // Duration baked into the current silent track's URI. Kept so a metadata-only
+    // replacement can reuse the same URI, which is what lets ExoPlayer update the
+    // item in place instead of rebuilding the track.
+    private var itemDurationMs = DEFAULT_DURATION_MS
+    // Title and section heading the notification currently shows, so the item
+    // is only replaced when one of them actually changes.
+    private var publishedTitle: String? = null
+    private var publishedSection: String? = null
+    // Fetching the next text file after a page ends; cancelled by anything the
+    // user does in the meantime (see startPlayback / stopPlayback).
+    private var advanceJob: Job? = null
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
@@ -177,7 +191,22 @@ class PlaybackService : MediaSessionService() {
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(SilenceSourceFactory())
-            .setAudioAttributes(AudioAttributes.DEFAULT, true)
+            // Speech, not the default "unknown" content type. Navigation prompts,
+            // Assistant replies and notification sounds take audio focus with
+            // "may duck", and for anything but speech Media3 answers that by
+            // ducking: lowering the volume of *this* player, which plays silence,
+            // while the voice (the TTS engine's audio, another process's) carried
+            // on at full volume over the directions. For speech Media3 pauses
+            // instead, and that arrives as a playback suppression reason, which
+            // stops the voice and resumes it afterwards — see
+            // onPlaybackSuppressionReasonChanged.
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                    .build(),
+                true
+            )
             .setHandleAudioBecomingNoisy(true)
             .build()
 
@@ -245,8 +274,30 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, TtsSeekingPlayer())
             .setSessionActivity(pendingIntent)
             .setCallback(CustomSessionCallback())
+            .setMediaButtonPreferences(sectionButtons())
             .build()
     }
+
+    /**
+     * Previous/next *section* either side of play/pause in the notification, on
+     * the lock screen and on car and Bluetooth displays — the chapter-level jump
+     * a listener wants from outside the app, and the same commands as a long
+     * press on the in-app skip buttons. On a page without headings those
+     * commands fall back to a sentence skip, so the buttons never go dead.
+     */
+    @OptIn(UnstableApi::class)
+    private fun sectionButtons(): List<CommandButton> = listOf(
+        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+            .setDisplayName(getString(R.string.previous_section))
+            .setSessionCommand(SessionCommand("skipPreviousSection", Bundle.EMPTY))
+            .setSlots(CommandButton.SLOT_BACK)
+            .build(),
+        CommandButton.Builder(CommandButton.ICON_NEXT)
+            .setDisplayName(getString(R.string.next_section))
+            .setSessionCommand(SessionCommand("skipNextSection", Bundle.EMPTY))
+            .setSlots(CommandButton.SLOT_FORWARD)
+            .build()
+    )
 
     // ── ForwardingPlayer that maps notification seek-bar drags onto sentences ──
     //
@@ -290,6 +341,7 @@ class PlaybackService : MediaSessionService() {
                     if (player.currentMediaItem != null) player.seekTo(startMs)
                     broadcastCurrentIndex()
                     persistPosition()
+                    refreshItemMetadata()
                 }
             }
 
@@ -404,17 +456,54 @@ class PlaybackService : MediaSessionService() {
         val totalMs = PlaybackDataRepository.totalDurationMs
         val durationMs = if (totalMs > 0) totalMs + DURATION_BUFFER_MS else DEFAULT_DURATION_MS
         loadedGeneration = PlaybackDataRepository.generation
+        itemDurationMs = durationMs
         maybeSaveSnapshot()
+        publishedTitle = PlaybackDataRepository.pageTitle
+        publishedSection = PlaybackDataRepository.sectionTitleAt(currentSentenceIndex)
         return pageItem(
             url = PlaybackDataRepository.pageUrl,
             pageTitle = PlaybackDataRepository.pageTitle,
             imageUrl = PlaybackDataRepository.imageUrl,
-            durationMs = durationMs
+            durationMs = durationMs,
+            section = publishedSection
         )
     }
 
-    /** The MediaItem for a page, built from its parts and touching nothing. */
-    private fun pageItem(url: String?, pageTitle: String, imageUrl: String?, durationMs: Long): MediaItem {
+    /**
+     * Keep the notification's subtitle on the section being read, and pick up a
+     * page title that arrived after playback started. Replaced in place: the new
+     * item has the same URI, so PageSilenceSource accepts it as an update and
+     * ExoPlayer swaps the metadata without touching the track or the position.
+     */
+    private fun refreshItemMetadata() {
+        if (player.currentMediaItem == null) return
+        if (loadedGeneration != PlaybackDataRepository.generation) return
+        val title = PlaybackDataRepository.pageTitle
+        val section = PlaybackDataRepository.sectionTitleAt(currentSentenceIndex)
+        if (title == publishedTitle && section == publishedSection) return
+        publishedTitle = title
+        publishedSection = section
+        player.replaceMediaItem(
+            0,
+            pageItem(
+                url = PlaybackDataRepository.pageUrl,
+                pageTitle = title,
+                imageUrl = PlaybackDataRepository.imageUrl,
+                durationMs = itemDurationMs,
+                section = section
+            )
+        )
+    }
+
+    /** The MediaItem for a page, built from its parts and touching nothing.
+     *  The subtitle is the [section] being read when there is one, else the site. */
+    private fun pageItem(
+        url: String?,
+        pageTitle: String,
+        imageUrl: String?,
+        durationMs: Long,
+        section: String? = null
+    ): MediaItem {
         // The manual and other local pages have no host; they're PageVox's own.
         val site = url?.let { Uri.parse(it).host }?.removePrefix("www.")?.takeIf { it.isNotBlank() }
             ?: getString(R.string.app_name)
@@ -422,7 +511,7 @@ class PlaybackService : MediaSessionService() {
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
             .setDisplayTitle(title)
-            .setArtist(site)
+            .setArtist(section ?: site)
             .apply {
                 // One or the other: Media3's loader prefers artworkData whenever
                 // it's set, so the page image must go in alone to be used at all.
@@ -625,8 +714,11 @@ class PlaybackService : MediaSessionService() {
             return
         }
         try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
-        // An explicit play/seek supersedes any pending post-call resume.
+        // An explicit play/seek supersedes any pending post-call resume, and any
+        // next-file fetch still running from the end of the previous page.
         pausedForCall = false
+        advanceJob?.cancel()
+        advanceJob = null
         applyContentLanguage()
         currentSentenceIndex = index
         // Rebuild the silent track with the current sentence list's estimated
@@ -644,6 +736,8 @@ class PlaybackService : MediaSessionService() {
     private fun stopPlayback() {
         if (isTtsReady) try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
         pausedForCall = false
+        advanceJob?.cancel()
+        advanceJob = null
         currentSentenceIndex = 0
         player.playWhenReady = false
         player.stop()
@@ -683,18 +777,103 @@ class PlaybackService : MediaSessionService() {
             }
         } else {
             Log.d(TAG, "End of sentences")
-            currentSentenceIndex = 0
-            // Tell the UI playback has finished so it can clear the highlight.
-            // We send a distinct command (not updateIndex=0) so the UI does NOT
-            // persist 0 over the user's last-known position — that would mean a
-            // page finishing in the background wipes the resume point.
-            mediaSession?.broadcastCustomCommand(
-                SessionCommand("playbackEnded", Bundle.EMPTY), Bundle.EMPTY
-            )
-            player.playWhenReady = false
-            player.stop()
-            player.clearMediaItems()
+            onPageFinished()
         }
+    }
+
+    /**
+     * The last sentence has been read. A plain-text file carries on into the
+     * next file in its folder — chapter files of one book — unless the user has
+     * turned that off; everything else stops here as it always has.
+     *
+     * Playback stays nominally "playing" while the next file is fetched. The
+     * service is in the foreground now and may not be allowed back into it from
+     * the background, so it must not pause and restart around the gap.
+     */
+    private fun onPageFinished() {
+        val url = PlaybackDataRepository.pageUrl
+        if (url == null || !isTextDocument(url)) {
+            endPlayback()
+            return
+        }
+        val generation = PlaybackDataRepository.generation
+        advanceJob?.cancel()
+        advanceJob = serviceScope.launch {
+            val enabled = settingsRepo.prefsFlow.first().continueToNextFile
+            val advanced = enabled && advanceToNextFile(url, generation)
+            // A page the user loaded meanwhile is theirs; don't stop it.
+            if (!advanced && PlaybackDataRepository.generation == generation) endPlayback()
+        }
+    }
+
+    private fun endPlayback() {
+        currentSentenceIndex = 0
+        // Tell the UI playback has finished so it can clear the highlight.
+        // We send a distinct command (not updateIndex=0) so the UI does NOT
+        // persist 0 over the user's last-known position — that would mean a
+        // page finishing in the background wipes the resume point.
+        mediaSession?.broadcastCustomCommand(
+            SessionCommand("playbackEnded", Bundle.EMPTY), Bundle.EMPTY
+        )
+        player.playWhenReady = false
+        player.stop()
+        player.clearMediaItems()
+    }
+
+    /**
+     * Fetch the file after [currentUrl] and start reading it. The text goes
+     * through the same buildNarration as a page the app extracted — a text file
+     * is one block either way — so sentences, cleanup and the follow-along
+     * highlight match what the app would have produced. The UI notices through
+     * [PlaybackDataRepository.autoAdvances] and follows.
+     *
+     * Returns false when there is no next file, or when anything happened while
+     * fetching (a new page, a skip, a stop): what the user did wins.
+     */
+    private suspend fun advanceToNextFile(currentUrl: String, generation: Int): Boolean {
+        // The WebView's cookies, so a file behind a login the user already did in
+        // the app is reachable. Read on the main thread (this runs on it): this
+        // may be the first WebView call in a process a headphone press started.
+        val cookie = runCatching { CookieManager.getInstance().getCookie(currentUrl) }.getOrNull()
+        val (nextUrl, text) = withContext(Dispatchers.IO) { fetchNextTextFile(currentUrl, cookie) }
+            ?: return false
+        val language = PlaybackDataRepository.language
+        val narration = withContext(Dispatchers.Default) {
+            buildNarration(listOf(PageBlock(text, "")), language)
+        }
+        if (narration.display.isEmpty()) return false
+        // Checked before writing anything as well as after: a page the user
+        // opened while this was fetching owns the "last page" record, and
+        // writing ours over it would reopen the app on the wrong page.
+        if (PlaybackDataRepository.generation != generation) return false
+        val name = readableTitle(nextUrl, nextUrl) ?: nextUrl
+        // A chapter read before resumes where it stopped; a finished one restarts.
+        val saved = settingsRepo.savedPositionFor(nextUrl)
+        val start = if (saved >= narration.display.lastIndex) 0 else saved
+        // History first: reading positions are only recorded against pages that
+        // have a history entry.
+        settingsRepo.addHistory(WebPage(nextUrl, name))
+        settingsRepo.updateLastUrl(nextUrl)
+        settingsRepo.updateLastIndex(start)
+        if (PlaybackDataRepository.generation != generation) return false
+        PlaybackDataRepository.setSentences(
+            narration.display,
+            language = language,
+            pageUrl = nextUrl,
+            startIndex = start,
+            spokenSentences = narration.spoken,
+            sectionStarts = narration.sectionStarts,
+            sectionTitles = narration.sectionTitles,
+            title = name
+        )
+        PlaybackDataRepository.autoAdvances++
+        Log.d(TAG, "Continuing into $nextUrl at sentence $start")
+        // Paused while fetching: leave it loaded, and Play resumes it there.
+        if (player.playWhenReady) {
+            advanceJob = null   // startPlayback cancels advanceJob — not this one
+            startPlayback(start)
+        }
+        return true
     }
 
     /**
@@ -961,9 +1140,25 @@ private class SilenceSourceFactory : MediaSource.Factory {
 @OptIn(UnstableApi::class)
 private class PageSilenceSource(
     silence: MediaSource,
-    private val item: MediaItem
+    item: MediaItem
 ) : WrappingMediaSource(silence) {
+    // Swapped in place when only the metadata changes (a new section heading, a
+    // late page title). Read on ExoPlayer's playback thread, hence @Volatile.
+    @Volatile
+    private var item: MediaItem = item
+
     override fun getMediaItem(): MediaItem = item
+
+    // Same URI means same duration, i.e. the same silent track with new labels.
+    // Anything else is a different track and must be rebuilt, not updated.
+    override fun canUpdateMediaItem(mediaItem: MediaItem): Boolean =
+        mediaItem.localConfiguration?.uri == item.localConfiguration?.uri
+
+    // Deliberately not passed down: the silence underneath never changes, and
+    // ExoPlayer's own masking layer re-labels the timeline window with it.
+    override fun updateMediaItem(mediaItem: MediaItem) {
+        item = mediaItem
+    }
 
     override fun getInitialTimeline(): Timeline? = mediaSource.initialTimeline?.let(::relabel)
 

@@ -3,6 +3,7 @@ package fi.paso.pagevox
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.Message
@@ -94,6 +95,11 @@ fun WebViewContainer(
     val latestOnCanGoBackChanged = rememberUpdatedState(onCanGoBackChanged)
     val latestOnTextTapped = rememberUpdatedState(onTextTapped)
     val latestReaderMode = rememberUpdatedState(readerMode)
+    // The sentence being read and the follow-along toggle, as seen from WebView
+    // callbacks: onPageFinished (below) and the lifecycle observer re-draw the
+    // highlight from these.
+    val latestSentence = rememberUpdatedState(currentSentence)
+    val latestFollowAlong = rememberUpdatedState(followAlong)
 
     // The last URL onPageFinished reported. Used to break the feedback cycle
     // WebView → onPageFinished → viewModel.loadUrl → LaunchedEffect(url) →
@@ -219,6 +225,55 @@ fun WebViewContainer(
                     authRequest = HttpAuthRequest(handler, host, realm)
                 }
 
+                /**
+                 * Report a navigation as soon as it starts, not only when it
+                 * finishes. onPageFinished waits for every subresource of an
+                 * HTML page — ads, images, trackers — often seconds after the
+                 * text is on screen, and until the app heard about the new page
+                 * it kept showing the previous one's reading progress and sent
+                 * Play to the previous one's sentences. Reporting the same URL
+                 * again at finish is harmless: the ViewModel ignores a URL it
+                 * already has. Main-frame navigations only; same-document ones
+                 * (#fragments, history.pushState) don't come through here.
+                 */
+                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    if (url != null && !url.startsWith("data:")) {
+                        // Before the callback, as in onPageFinished: the URL
+                        // came from the WebView and must not be pushed back in.
+                        lastReportedUrl = url
+                        latestOnUrlChange.value(url)
+                    }
+                }
+
+                /**
+                 * Same-document navigations. Single-page apps (React/Next.js,
+                 * Vue, ...) swap the content and change the address with
+                 * history.pushState, and no onPageStarted or onPageFinished ever
+                 * fires for that: the app went on believing the previous page
+                 * was showing — its progress on the scrubber, its sentences
+                 * under Play, and its read still running, so the button showed
+                 * Pause and starting the new page took two presses. This
+                 * callback sees every history change, so it reports those.
+                 *
+                 * Only a change of *path* counts. Sites also rewrite the query
+                 * or the fragment as you scroll (tracking parameters, the
+                 * section in view), and treating that as a navigation would
+                 * stop a read midway. Reloads aren't navigations either.
+                 */
+                override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    // Back works for in-page navigations too, and onPageFinished
+                    // — which used to be the only place this was updated —
+                    // never comes for them.
+                    latestOnCanGoBackChanged.value(view?.canGoBack() == true)
+                    if (isReload || url == null || url.startsWith("data:")) return
+                    val known = lastReportedUrl
+                    if (known != null && samePath(known, url)) return
+                    lastReportedUrl = url
+                    latestOnUrlChange.value(url)
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     latestOnCanGoBackChanged.value(view?.canGoBack() == true)
@@ -227,6 +282,19 @@ fun WebViewContainer(
                         latestOnUrlChange.value(url)
                     }
                     if (latestReaderMode.value) view?.evaluateJavascript(APPLY_READER_JS, null)
+                    // Re-draw the follow-along highlight on the freshly loaded
+                    // page. The highlight effect runs when the sentence *text*
+                    // changes, and on a resume that is usually while the page is
+                    // still loading: opening the app after a headphone resume,
+                    // the activity being rebuilt, the screen following the player
+                    // into the next chapter file. The script then finds nothing
+                    // to highlight, and since the sentence doesn't change when the
+                    // page arrives, nothing re-ran it — while paused, the reading
+                    // position never showed at all. This also scrolls it into view.
+                    val sentence = latestSentence.value
+                    if (latestFollowAlong.value && sentence.isNotEmpty()) {
+                        view?.evaluateJavascript(highlightSentenceJs(JSONObject.quote(sentence)), null)
+                    }
                 }
             }
 
@@ -304,8 +372,6 @@ fun WebViewContainer(
     // WebView may have dropped the CSS highlight during the background period
     // (re-layout, renderer trim). Without this, the highlight stays missing
     // until playback advances to the next sentence or the page is reloaded.
-    val latestSentence = rememberUpdatedState(currentSentence)
-    val latestFollowAlong = rememberUpdatedState(followAlong)
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

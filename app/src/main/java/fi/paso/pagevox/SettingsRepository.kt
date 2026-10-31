@@ -70,7 +70,8 @@ data class UserPreferences(
     val speechRate: Float,
     val readerMode: Boolean,
     val followAlong: Boolean,
-    val selectedVoice: String
+    val selectedVoice: String,
+    val continueToNextFile: Boolean
 )
 
 /** A visited or bookmarked page. [title] falls back to the URL when unknown.
@@ -103,6 +104,7 @@ class SettingsRepository(private val context: Context) {
         val READER_MODE = booleanPreferencesKey("reader_mode")
         val FOLLOW_ALONG = booleanPreferencesKey("follow_along")
         val SELECTED_VOICE = stringPreferencesKey("selected_voice")
+        val CONTINUE_TO_NEXT_FILE = booleanPreferencesKey("continue_to_next_file")
     }
 
     val prefsFlow = context.dataStore.data.map { prefs ->
@@ -121,7 +123,9 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.SPEECH_RATE] ?: DEFAULT_SPEECH_RATE,
             prefs[Keys.READER_MODE] ?: false,
             prefs[Keys.FOLLOW_ALONG] ?: true,
-            prefs[Keys.SELECTED_VOICE] ?: ""
+            prefs[Keys.SELECTED_VOICE] ?: "",
+            // On by default: a folder of chapter files is the case it exists for.
+            prefs[Keys.CONTINUE_TO_NEXT_FILE] ?: true
         )
     }
 
@@ -141,6 +145,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateReaderMode(enabled: Boolean) = context.dataStore.edit { it[Keys.READER_MODE] = enabled }
     suspend fun updateFollowAlong(enabled: Boolean) = context.dataStore.edit { it[Keys.FOLLOW_ALONG] = enabled }
     suspend fun updateSelectedVoice(name: String) = context.dataStore.edit { it[Keys.SELECTED_VOICE] = name }
+    suspend fun updateContinueToNextFile(enabled: Boolean) =
+        context.dataStore.edit { it[Keys.CONTINUE_TO_NEXT_FILE] = enabled }
 
     /** Move [page] to the top of history. A revisit (matched on the normalized
      *  URL, so redirect variants don't duplicate) keeps the known title and the
@@ -236,6 +242,7 @@ class SettingsRepository(private val context: Context) {
             readerMode = prefs[Keys.READER_MODE],
             followAlong = prefs[Keys.FOLLOW_ALONG],
             selectedVoice = prefs[Keys.SELECTED_VOICE],
+            continueToNextFile = prefs[Keys.CONTINUE_TO_NEXT_FILE],
             history = decodePages(prefs[Keys.HISTORY]),
             bookmarks = decodePages(prefs[Keys.BOOKMARKS])
         )
@@ -282,6 +289,7 @@ class SettingsRepository(private val context: Context) {
         backup.readerMode?.let { prefs[Keys.READER_MODE] = it }
         backup.followAlong?.let { prefs[Keys.FOLLOW_ALONG] = it }
         backup.selectedVoice?.let { prefs[Keys.SELECTED_VOICE] = it }
+        backup.continueToNextFile?.let { prefs[Keys.CONTINUE_TO_NEXT_FILE] = it }
         prefs[Keys.HISTORY] = encodePages(backup.history.take(HISTORY_LIMIT))
         prefs[Keys.BOOKMARKS] = encodePages(backup.bookmarks)
     }

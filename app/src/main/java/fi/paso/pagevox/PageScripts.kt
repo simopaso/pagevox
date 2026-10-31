@@ -273,7 +273,11 @@ internal fun extractTexts(
                 PageBlock(arr.getString(i), tags?.optString(i).orEmpty())
             }, image)
         } catch (e: Exception) {
-            Log.e(TAG, "Text extraction failed", e)
+            // A script run mid-navigation returns "null" rather than our JSON.
+            // Report it as a page with no text yet, so the caller can retry
+            // instead of the press silently doing nothing.
+            Log.w(TAG, "Text extraction failed", e)
+            onResult(null, emptyList(), null)
         }
     }
 }

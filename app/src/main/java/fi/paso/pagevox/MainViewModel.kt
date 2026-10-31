@@ -36,6 +36,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     var readerMode by mutableStateOf(false)
     var followAlong by mutableStateOf(true)
     var selectedVoice by mutableStateOf("")   // "" = system default voice
+    var continueToNextFile by mutableStateOf(true)
 
     val isCurrentBookmarked: Boolean get() = bookmarks.any { it.url == url }
 
@@ -57,6 +58,12 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     fun remainingMsFrom(index: Int): Long = PlaybackDataRepository.baseRemainingMsFrom(index)
 
     private var initialIndex = 0
+
+    // The PlaybackDataRepository.autoAdvances count this ViewModel has caught up
+    // with. Starts at the current value: a ViewModel created after the player
+    // moved on already opens on the new file (the service updated the last URL),
+    // so there is nothing to follow.
+    private var followedAdvances = PlaybackDataRepository.autoAdvances
 
     // Set to the restored URL while a cold-start restore is in flight, cleared
     // the first time loadUrl() sees that page settle. The WebView's very first
@@ -156,14 +163,38 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         val savedPosition = history.firstOrNull {
             normalizeUrlForCompare(it.url) == normalizeUrlForCompare(newUrl)
         }?.position ?: 0
-        initialIndex = savedPosition
-        sentences = emptyList()
-        sectionStarts = emptyList()
+        // The player may already be reading this very page — it moved on to the
+        // next file by itself, or this is a return to the page still loaded in
+        // it. Take its sentences as they are: re-extracting would build the same
+        // set, and until then the scrubber and highlight would sit empty while
+        // the page is audibly being read.
+        val playing = PlaybackDataRepository.pageUrl
+        val adopt = playing != null && PlaybackDataRepository.sentences.isNotEmpty() &&
+            normalizeUrlForCompare(playing) == normalizeUrlForCompare(newUrl)
+        if (adopt) {
+            initialIndex = PlaybackDataRepository.currentIndex
+            sentences = PlaybackDataRepository.sentences.toList()
+            sectionStarts = PlaybackDataRepository.sectionStarts.toList()
+        } else {
+            initialIndex = savedPosition
+            sentences = emptyList()
+            sectionStarts = emptyList()
+        }
+        val indexToSave = initialIndex
         viewModelScope.launch {
             repo.updateLastUrl(newUrl)
-            repo.updateLastIndex(savedPosition)
+            repo.updateLastIndex(indexToSave)
             repo.addHistory(WebPage(newUrl, newUrl))
         }
+    }
+
+    /** The service finished a text file and carried on into the next one by
+     *  itself. Show that file, so the page on screen is the one being read. */
+    private fun followPlayerAdvance() {
+        val advances = PlaybackDataRepository.autoAdvances
+        if (advances == followedAdvances) return
+        followedAdvances = advances
+        PlaybackDataRepository.pageUrl?.let { loadUrl(it) }
     }
 
     /** WebView reported a page title; remember it and backfill the history row. */
@@ -234,6 +265,11 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     }
 
     /** Toggle karaoke-style follow-along (auto-scroll + sentence highlight). */
+    fun toggleContinueToNextFile() {
+        continueToNextFile = !continueToNextFile
+        viewModelScope.launch { repo.updateContinueToNextFile(continueToNextFile) }
+    }
+
     fun toggleFollowAlong() {
         followAlong = !followAlong
         viewModelScope.launch { repo.updateFollowAlong(followAlong) }
@@ -260,6 +296,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         followAlong = prefs.followAlong
         selectedVoice = prefs.selectedVoice
         PlaybackDataRepository.selectedVoiceName = prefs.selectedVoice.ifBlank { null }
+        continueToNextFile = prefs.continueToNextFile
     }
 
     // -- Backup ---------------------------------------------------------------
@@ -366,6 +403,10 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
      *  exact gap that used to lose the position on a background/lock-screen
      *  pause followed by the app being closed. */
     fun updateHighlight(index: Int) {
+        // Every index broadcast is a chance to notice the player has moved on to
+        // another file — including the one sent on reconnect when the app comes
+        // back to the foreground, which is when it most likely happened.
+        followPlayerAdvance()
         currentHighlightIndex = index
         initialIndex = index
         currentSentenceText = sentences.getOrElse(index) { "" }

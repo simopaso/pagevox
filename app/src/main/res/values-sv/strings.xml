@@ -25,6 +25,7 @@
     <string name="text_zoom_percent">%1$d %%</string>
     <string name="menu_reader_mode">Läsläge</string>
     <string name="menu_follow_along">Följ med</string>
+    <string name="menu_continue_next_file">Fortsätt till nästa fil</string>
     <string name="menu_reading_speed">Uppläsningshastighet</string>
     <string name="menu_settings">Inställningar</string>
     <string name="menu_tts_settings">Inställningar för talsyntes</string>

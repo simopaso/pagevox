@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -135,7 +136,14 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
         if (curr.isEmpty()) return@LaunchedEffect
         val prev = lastSeenUrl
         lastSeenUrl = curr
-        if (prev != null && prev != curr) {
+        // Moving to the page the player is already reading isn't navigating
+        // away from it — that is how the screen follows the player into the
+        // next chapter file, and stopping here would end the very read it's
+        // following.
+        val toPlayingPage = PlaybackDataRepository.pageUrl?.let {
+            normalizeUrlForCompare(it) == normalizeUrlForCompare(curr)
+        } == true
+        if (prev != null && prev != curr && !toPlayingPage) {
             latestController.value?.sendCustomCommand(
                 SessionCommand("stopPlayback", Bundle.EMPTY), Bundle.EMPTY
             )
@@ -155,8 +163,21 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     }
 
     // Playback Logic
-    fun togglePlay() {
-        if (controller == null) return
+    //
+    // [freshPage] is true when the sentences were extracted just now, for this
+    // press. That page must be started explicitly at its start index: deciding
+    // from the controller's playbackState instead is unreliable right after a
+    // stopPlayback, because the controller learns the new state asynchronously
+    // and may still report the old page as READY — a plain play() would then
+    // start the new page from sentence 0. The controller is read live for the
+    // same reason this can run late: it is called from the extraction callback.
+    fun togglePlay(freshPage: Boolean = false) {
+        val controller = latestController.value ?: return
+        if (freshPage) {
+            val args = Bundle().apply { putInt("startIndex", viewModel.getStartIndex()) }
+            controller.sendCustomCommand(SessionCommand("playSentences", Bundle.EMPTY), args)
+            return
+        }
         if (isPlaying) {
             controller.pause()
         } else {
@@ -168,6 +189,65 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                 controller.sendCustomCommand(SessionCommand("playSentences", Bundle.EMPTY), args)
             } else {
                 controller.play()
+            }
+        }
+    }
+
+    /**
+     * Bring the app's idea of "the current page" up to date with what the
+     * WebView is actually showing, before a Play or a tap acts on it.
+     *
+     * The app hears about a navigation only from onPageFinished, and on an HTML
+     * page that waits for every subresource — ads, images, trackers — often
+     * seconds after the text is on screen. A Play pressed in that window acted
+     * on the *previous* page's sentences; then onPageFinished arrived, the
+     * navigation was recognised, and the stop it triggers (the LaunchedEffect
+     * above) ended the read that had only just started. So the first press did
+     * nothing and the second worked. Plain-text files finish loading at once,
+     * which is why only HTML pages showed it.
+     *
+     * WebViewContainer now reports navigations from onPageStarted too, which
+     * closes that window at the source; this stays as the backstop for any
+     * navigation that reaches the screen without passing through it.
+     */
+    fun syncToShownPage() {
+        val shown = webView?.url ?: return
+        if (viewModel.url.isEmpty() || shown.startsWith("data:")) return
+        if (normalizeUrlForCompare(shown) == normalizeUrlForCompare(viewModel.url)) return
+        Log.i("MainScreen", "Page changed before it finished loading; syncing to $shown")
+        val playerOnShown = PlaybackDataRepository.pageUrl?.let {
+            normalizeUrlForCompare(it) == normalizeUrlForCompare(shown)
+        } == true
+        // Stop the old page's read now, *before* the new page is started, and
+        // record the navigation as already seen, so the LaunchedEffect doesn't
+        // send a stop of its own later — after Play has started the new page.
+        if (!playerOnShown) {
+            latestController.value?.sendCustomCommand(
+                SessionCommand("stopPlayback", Bundle.EMPTY), Bundle.EMPTY
+            )
+        }
+        lastSeenUrl = shown
+        viewModel.loadUrl(shown)
+    }
+
+    /**
+     * Extract the shown page's text and hand it to the ViewModel, then [onReady].
+     * A press that comes before the page has rendered any text at all used to
+     * do nothing; while the page is still loading, try again shortly instead —
+     * for up to five seconds, and only while the WebView is still on the same
+     * page, so a retry can't start a page the user has since left.
+     */
+    fun extractShownPage(onReady: () -> Unit, attempt: Int = 0) {
+        val view = webView ?: return
+        val forUrl = view.url
+        extractTexts(view, viewModel.readerMode) { lang, blocks, image ->
+            val nothingYet = blocks.none { it.text.isNotBlank() }
+            if (nothingYet && view.progress < 100 && attempt < 10) {
+                view.postDelayed({
+                    if (view.url == forUrl) extractShownPage(onReady, attempt + 1)
+                }, 500)
+            } else {
+                viewModel.onTextsExtracted(lang, blocks, image, onReady)
             }
         }
     }
@@ -226,10 +306,11 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                                 )
                             }
                         }
+                        // A tap is on the page as shown, even if it hasn't
+                        // finished loading yet — see syncToShownPage.
+                        syncToShownPage()
                         if (viewModel.sentences.isEmpty()) {
-                            extractTexts(webView, viewModel.readerMode) { lang, blocks, image ->
-                                viewModel.onTextsExtracted(lang, blocks, image) { seekAndPlay() }
-                            }
+                            extractShownPage({ seekAndPlay() })
                         } else {
                             seekAndPlay()
                         }
@@ -287,6 +368,8 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             readerMode = viewModel.readerMode,
             followAlong = viewModel.followAlong,
             onToggleFollowAlong = { viewModel.toggleFollowAlong() },
+            continueToNextFile = viewModel.continueToNextFile,
+            onToggleContinueToNextFile = { viewModel.toggleContinueToNextFile() },
             textZoom = viewModel.textZoom,
             canGoBack = canGoBack,
             canGoUp = parentUrl != null,
@@ -299,10 +382,12 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                 if (railLayout) openPanel(library = !showLibrary) else showLibrary = true
             },
             onPlayPause = {
+                // While something plays the button shows Pause, and pausing is
+                // what it does — whatever page is showing. Otherwise act on the
+                // page actually on screen.
+                if (!isPlaying) syncToShownPage()
                 if (viewModel.sentences.isEmpty()) {
-                    extractTexts(webView, viewModel.readerMode) { lang, blocks, image ->
-                        viewModel.onTextsExtracted(lang, blocks, image) { togglePlay() }
-                    }
+                    extractShownPage({ togglePlay(freshPage = true) })
                 } else {
                     togglePlay()
                 }
@@ -564,6 +649,8 @@ fun PlaybackControls(
     readerMode: Boolean,
     followAlong: Boolean,
     onToggleFollowAlong: () -> Unit,
+    continueToNextFile: Boolean,
+    onToggleContinueToNextFile: () -> Unit,
     textZoom: Int,
     canGoBack: Boolean,
     canGoUp: Boolean,
@@ -645,6 +732,8 @@ fun PlaybackControls(
             readerMode = readerMode,
             followAlong = followAlong,
             onToggleFollowAlong = onToggleFollowAlong,
+            continueToNextFile = continueToNextFile,
+            onToggleContinueToNextFile = onToggleContinueToNextFile,
             textZoom = textZoom,
             canGoUp = canGoUp,
             onUp = onUp,
@@ -789,6 +878,8 @@ private fun BottomBarOverflow(
     readerMode: Boolean,
     followAlong: Boolean,
     onToggleFollowAlong: () -> Unit,
+    continueToNextFile: Boolean,
+    onToggleContinueToNextFile: () -> Unit,
     textZoom: Int,
     canGoUp: Boolean,
     onUp: () -> Unit,
@@ -873,6 +964,17 @@ private fun BottomBarOverflow(
                 )
                 HorizontalDivider()
             }
+            // Not promoted to the rail: it's a set-and-forget preference, not
+            // something reached for mid-read.
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_continue_next_file)) },
+                onClick = { onToggleContinueToNextFile(); open = false },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null) },
+                trailingIcon = {
+                    if (continueToNextFile) Icon(Icons.Default.Check, stringResource(R.string.state_on))
+                }
+            )
+            HorizontalDivider()
             Text(
                 stringResource(R.string.menu_reading_speed),
                 style = MaterialTheme.typography.labelMedium,

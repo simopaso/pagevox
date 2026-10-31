@@ -27,6 +27,7 @@ internal data class LibraryBackup(
     val readerMode: Boolean? = null,
     val followAlong: Boolean? = null,
     val selectedVoice: String? = null,
+    val continueToNextFile: Boolean? = null,
     val history: List<WebPage> = emptyList(),
     val bookmarks: List<WebPage> = emptyList()
 )
@@ -51,6 +52,7 @@ internal fun LibraryBackup.toJson(appVersion: String, exportedAt: String): Strin
     readerMode?.let { settings.put("readerMode", it) }
     followAlong?.let { settings.put("followAlong", it) }
     selectedVoice?.let { settings.put("selectedVoice", it) }
+    continueToNextFile?.let { settings.put("continueToNextFile", it) }
     return JSONObject()
         .put("format", BACKUP_FORMAT)
         .put("version", BACKUP_VERSION)
@@ -90,6 +92,7 @@ internal fun parseLibraryBackup(text: String): LibraryBackup {
         readerMode = settings.optBooleanOrNull("readerMode"),
         followAlong = settings.optBooleanOrNull("followAlong"),
         selectedVoice = settings.optStringOrNull("selectedVoice"),
+        continueToNextFile = settings.optBooleanOrNull("continueToNextFile"),
         history = pagesFromJson(root.optJSONArray("history")),
         bookmarks = pagesFromJson(root.optJSONArray("bookmarks"))
     )

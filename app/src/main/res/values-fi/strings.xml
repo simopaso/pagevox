@@ -25,6 +25,7 @@
     <string name="text_zoom_percent">%1$d %%</string>
     <string name="menu_reader_mode">Lukutila</string>
     <string name="menu_follow_along">Seuraa lukemista</string>
+    <string name="menu_continue_next_file">Jatka seuraavaan tiedostoon</string>
     <string name="menu_reading_speed">Lukunopeus</string>
     <string name="menu_settings">Asetukset</string>
     <string name="menu_tts_settings">Puheäänen asetukset</string>

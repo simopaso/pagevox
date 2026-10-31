@@ -41,4 +41,42 @@ class ReadableTitleTest {
         assertNull(readableTitle("", "https://example.com/a.txt"))
         assertNull(readableTitle("   ", null))
     }
+
+    // What WebView actually reports for an untitled page: Chromium drops the
+    // scheme (https too), a leading "www." and decodes %20.
+
+    @Test
+    fun chromiumDisplayFormBecomesTheFileName() {
+        assertEquals(
+            "chapter-01.txt",
+            readableTitle("example.com/books/chapter-01.txt", "https://www.example.com/books/chapter-01.txt")
+        )
+    }
+
+    @Test
+    fun chromiumDisplayFormWithSpacesTakesTheNameFromTheRealUrl() {
+        assertEquals(
+            "my file.txt",
+            readableTitle("example.com/books/my file.txt", "https://example.com/books/my%20file.txt")
+        )
+    }
+
+    @Test
+    fun chromiumDisplayFormWithAPort() {
+        assertEquals(
+            "b.txt",
+            readableTitle("files.example.org:8443/a/b.txt", "https://files.example.org:8443/a/b.txt")
+        )
+    }
+
+    @Test
+    fun chromiumDisplayFormWithoutAPageUrl() {
+        assertEquals("b.txt", readableTitle("example.com/a/b.txt", null))
+    }
+
+    @Test
+    fun titlesThatOnlyMentionTheSiteStayTitles() {
+        assertEquals("example.com — home", readableTitle("example.com — home", "https://example.com/"))
+        assertEquals("Node.js", readableTitle("Node.js", "https://nodejs.org/en/about"))
+    }
 }

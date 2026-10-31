@@ -62,24 +62,68 @@ internal fun normalizeUrlForCompare(u: String): String = try {
 } catch (e: Exception) { u }
 
 /**
- * A human title for the media notification. Plain-text files and other pages
- * without a `<title>` get their URL reported as the title by WebView, which put
- * "https://example.com/books/chapter-01.txt" in full on the lock screen. A title
- * that is really a URL is cut down to its file name ("chapter-01.txt"), or the
- * site when the path has none. Null when there's nothing usable, so the caller
- * can fall back to the site name.
+ * A human title for the media notification. A page with no `<title>` — every
+ * plain-text file — is given one by Chromium, formatted from its URL. That
+ * put "example.com/books/chapter-01.txt" on the lock screen, and it isn't
+ * the raw URL either: Chromium drops the scheme (https:// included), drops a
+ * leading "www." and decodes %20 (NavigationEntryImpl::GetTitleForDisplay:
+ * kFormatUrlOmitDefaults | OmitHTTPS | OmitTrivialSubdomains). So a title is
+ * recognised as a URL by starting with the page's own host, not by having a
+ * scheme, and the name is then taken from the real URL rather than the lossy
+ * display copy. The result is the file name ("chapter-01.txt"), or the site
+ * when the path has none; null when there's nothing usable, so the caller can
+ * fall back to the site name.
  *
  * java.net.URI rather than android.net.Uri so this stays testable on the JVM;
- * its getPath() also undoes percent-encoding, so "my%20notes.txt" reads as
+ * its getPath() undoes percent-encoding, so "my%20notes.txt" reads as
  * "my notes.txt".
  */
 internal fun readableTitle(pageTitle: String, pageUrl: String?): String? {
     val title = pageTitle.trim()
     if (title.isEmpty()) return null
-    val looksLikeUrl = title == pageUrl?.trim() ||
-        Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://").containsMatchIn(title)
-    if (!looksLikeUrl) return title
-    val uri = try { java.net.URI(title) } catch (e: Exception) { return null }
+    if (!titleIsUrl(title, pageUrl)) return title
+    fileNameOrHost(pageUrl)?.let { return it }
+    return fileNameOrHost(if (URL_SCHEME.containsMatchIn(title)) title else "https://$title")
+}
+
+private val URL_SCHEME = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
+
+// "host.tld/..." with no whitespace in the host part: Chromium's display form
+// of a URL. Only consulted when there's no page URL to compare against, and it
+// requires the slash so a real title like "Node.js" isn't mistaken for one.
+private val DISPLAY_URL = Regex("""^[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:\d+)?/.*$""")
+
+private fun titleIsUrl(title: String, pageUrl: String?): Boolean {
+    if (URL_SCHEME.containsMatchIn(title)) return true
+    if (pageUrl != null && title == pageUrl.trim()) return true
+    val host = pageUrl?.let { runCatching { java.net.URI(it.trim()).host }.getOrNull() }?.lowercase()
+        ?: return DISPLAY_URL.matches(title)
+    val t = title.lowercase()
+    return listOf(host, host.removePrefix("www.")).any { h ->
+        t == h || t.startsWith("$h/") || t.startsWith("$h:")
+    }
+}
+
+private fun fileNameOrHost(url: String?): String? {
+    val uri = url?.let { runCatching { java.net.URI(it.trim()) }.getOrNull() } ?: return null
     uri.path?.split('/')?.lastOrNull { it.isNotBlank() }?.let { return it }
     return uri.host?.removePrefix("www.")?.takeIf { it.isNotBlank() }
+}
+
+/**
+ * True when [a] and [b] are the same document apart from query and fragment:
+ * same scheme, host and path, ignoring a trailing slash and host case. Used to
+ * tell a single-page app's real navigation (a new path) from the query and
+ * fragment rewrites sites make while you scroll. java.net.URI so it stays
+ * testable on the JVM.
+ */
+internal fun samePath(a: String, b: String): Boolean {
+    fun key(u: String): String? = runCatching {
+        val uri = java.net.URI(u.trim())
+        val scheme = uri.scheme?.lowercase()?.let { if (it == "http") "https" else it }
+        "$scheme://${uri.host?.lowercase()}${uri.port.takeIf { it >= 0 }?.let { ":$it" }.orEmpty()}" +
+            (uri.rawPath ?: "").trimEnd('/')
+    }.getOrNull()
+    val ka = key(a)
+    return ka != null && ka == key(b)
 }

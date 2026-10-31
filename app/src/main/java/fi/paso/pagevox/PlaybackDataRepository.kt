@@ -73,6 +73,16 @@ object PlaybackDataRepository {
         private set
 
     /**
+     * How many times the service has moved on to the next file by itself
+     * (see PlaybackService's end-of-page handling). The UI compares it against
+     * the last value it acted on to tell "the player moved on — follow it" apart
+     * from every other reason the loaded page might differ from the one shown,
+     * such as headphones resuming a page other than the one being browsed.
+     */
+    @Volatile
+    var autoAdvances: Int = 0
+
+    /**
      * The sentence index currently being read, published by the playback service
      * as it speaks. This is the authoritative resume point *within the process*:
      * unlike the service's own currentSentenceIndex it survives the service being
