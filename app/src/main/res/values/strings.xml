@@ -36,7 +36,7 @@
     <string name="text_zoom_percent">%1$d%%</string>
     <string name="menu_reader_mode">Reader mode</string>
     <string name="menu_follow_along">Follow along</string>
-    <string name="menu_continue_next_file">Continue to next file</string>
+    <string name="menu_continue_next_file">Continue to next chapter</string>
     <string name="menu_reading_speed">Reading speed</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_tts_settings">TTS voice settings</string>

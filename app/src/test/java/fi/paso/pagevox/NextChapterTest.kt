@@ -91,4 +91,40 @@ class NextChapterTest {
         val bomCrlf = "\uFEFFline one\r\nline two\rthree".toByteArray(Charsets.UTF_8)
         assertEquals("line one\nline two\nthree", decodeText(bomCrlf, "text/plain"))
     }
+
+    // acceptNextUrl: the check that doesn't trust the page's JavaScript.
+
+    @Test
+    fun aSameSiteChapterLinkIsAccepted() {
+        assertEquals(
+            "https://e.com/story/8",
+            acceptNextUrl("https://e.com/story/7", "https://e.com/story/8")
+        )
+        assertEquals(
+            "https://E.COM/s?ch=2",
+            acceptNextUrl("https://e.com/s?ch=1", "https://E.COM/s?ch=2")
+        )
+    }
+
+    @Test
+    fun otherSitesAndSchemesAreRefused() {
+        assertNull(acceptNextUrl("https://e.com/story/7", "https://evil.example/story/8"))
+        assertNull(acceptNextUrl("https://e.com/story/7", "javascript:alert(1)"))
+        assertNull(acceptNextUrl("https://e.com/story/7", "file:///sdcard/x.html"))
+        assertNull(acceptNextUrl("https://e.com/story/7", "intent://x#Intent;end"))
+    }
+
+    @Test
+    fun thePageItselfIsNotItsNextChapter() {
+        assertNull(acceptNextUrl("https://e.com/story/7", "https://e.com/story/7/"))
+        assertNull(acceptNextUrl("https://e.com/story/7", "https://e.com/story/7#comments"))
+    }
+
+    @Test
+    fun missingOrJunkIsRefused() {
+        assertNull(acceptNextUrl("https://e.com/a", null))
+        assertNull(acceptNextUrl("https://e.com/a", "   "))
+        assertNull(acceptNextUrl(null, "https://e.com/b"))
+        assertNull(acceptNextUrl("https://e.com/a", "https://e.com/" + "x".repeat(3000)))
+    }
 }

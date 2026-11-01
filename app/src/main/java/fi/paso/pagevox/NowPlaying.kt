@@ -30,7 +30,8 @@ internal data class NowPlaying(
     val spoken: List<String>,
     val sectionStarts: List<Int>,
     val sectionTitles: List<String>,
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    val nextUrl: String? = null
 )
 
 private const val NOW_PLAYING_VERSION = 1
@@ -46,6 +47,7 @@ internal fun NowPlaying.toJson(): String =
         .put("sectionStarts", JSONArray(sectionStarts))
         .put("sectionTitles", JSONArray(sectionTitles))
         .put("imageUrl", imageUrl ?: JSONObject.NULL)
+        .put("nextUrl", nextUrl ?: JSONObject.NULL)
         .toString()
 
 /** Null for anything unreadable or empty — resumption then simply doesn't
@@ -63,7 +65,8 @@ internal fun parseNowPlaying(text: String): NowPlaying? = try {
         spoken = o.optJSONArray("spoken")?.strings().orEmpty(),
         sectionStarts = o.optJSONArray("sectionStarts")?.ints().orEmpty(),
         sectionTitles = o.optJSONArray("sectionTitles")?.strings().orEmpty(),
-        imageUrl = if (o.isNull("imageUrl")) null else o.optString("imageUrl").ifBlank { null }
+        imageUrl = if (o.isNull("imageUrl")) null else o.optString("imageUrl").ifBlank { null },
+        nextUrl = if (!o.has("nextUrl") || o.isNull("nextUrl")) null else o.optString("nextUrl").ifBlank { null }
     )
 } catch (e: Exception) {
     null

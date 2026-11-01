@@ -15,6 +15,8 @@ import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
 import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
@@ -43,15 +45,20 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.util.Locale
 import java.util.UUID
+import kotlin.coroutines.resume
 
 private const val TAG = "PlaybackService"
 
@@ -79,6 +86,20 @@ private const val SILENCE_DURATION_PARAM = "ms"
 // Square artwork for pages that declare no image of their own, rendered from
 // the launcher icon. Big enough to stay sharp as the expanded player background.
 private const val FALLBACK_ARTWORK_PX = 512
+
+// How long the service waits for a next web chapter to load and yield text
+// before giving up and ending playback as it would have without continuation.
+private const val CHAPTER_LOAD_TIMEOUT_MS = 45_000L
+
+// The skips TtsSeekingPlayer handles itself (see there).
+private val SKIP_COMMANDS = intArrayOf(
+    Player.COMMAND_SEEK_TO_NEXT,
+    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+    Player.COMMAND_SEEK_TO_PREVIOUS,
+    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+    Player.COMMAND_SEEK_FORWARD,
+    Player.COMMAND_SEEK_BACK
+)
 
 class PlaybackService : MediaSessionService() {
 
@@ -147,6 +168,14 @@ class PlaybackService : MediaSessionService() {
     // Fetching the next text file after a page ends; cancelled by anything the
     // user does in the meantime (see startPlayback / stopPlayback).
     private var advanceJob: Job? = null
+    // The utterance id of the sentence being spoken now, or null while nothing
+    // should be (paused, stopped). Progress callbacks for any other utterance are
+    // ignored. Defensive: the platform contract says a stopped utterance gets
+    // onStop, not onDone, but callbacks arrive asynchronously on another thread,
+    // and an unmatched onDone landing after a skip or a pause would advance the
+    // index past a sentence that was never finished. Not seen in practice — a
+    // suspected case turned out to be a short sentence ending before the skip.
+    private var currentUtteranceId: String? = null
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {
@@ -318,6 +347,38 @@ class PlaybackService : MediaSessionService() {
             handleSessionSeek(positionMs) { super.seekTo(mediaItemIndex, it) }
         }
 
+        // Headphone and car buttons, Bluetooth remotes and the system player
+        // send "next"/"previous" (a headset double/triple tap becomes one too)
+        // and "fast-forward"/"rewind". With a single silent item the player had
+        // no next item, so Media3 dropped "next" outright, and "previous" moved
+        // only the silent track while the voice read on. Here they mean what a
+        // listener wants: next/previous jump a section — the same as the
+        // notification's buttons; skipSection falls back to a sentence on a
+        // page without headings, and "previous" restarts the current section
+        // first — and fast-forward/rewind step a sentence.
+        override fun seekToNext() = whenLoaded { skipSection(forward = true) }
+        override fun seekToNextMediaItem() = seekToNext()
+        override fun seekToPrevious() = whenLoaded { skipSection(forward = false) }
+        override fun seekToPreviousMediaItem() = seekToPrevious()
+        override fun seekForward() = whenLoaded { skipSentences(1) }
+        override fun seekBack() = whenLoaded { skipSentences(-1) }
+
+        // Media3 only lets a skip through when the player says it supports it:
+        // the session re-reads availability from this wrapper on every request.
+        override fun getAvailableCommands(): Player.Commands {
+            val inner = super.getAvailableCommands()
+            if (PlaybackDataRepository.sentences.isEmpty()) return inner
+            return inner.buildUpon().addAll(*SKIP_COMMANDS).build()
+        }
+
+        override fun isCommandAvailable(command: Int): Boolean =
+            (command in SKIP_COMMANDS && PlaybackDataRepository.sentences.isNotEmpty()) ||
+                super.isCommandAvailable(command)
+
+        private inline fun whenLoaded(action: () -> Unit) {
+            if (PlaybackDataRepository.sentences.isNotEmpty()) action()
+        }
+
         private inline fun handleSessionSeek(positionMs: Long, fallback: (Long) -> Unit) {
             if (PlaybackDataRepository.sentences.isEmpty()) {
                 fallback(positionMs)
@@ -335,6 +396,7 @@ class PlaybackService : MediaSessionService() {
             override fun onStart(utteranceId: String?) {
                 if (utteranceId.isSectionGap()) return
                 mainHandler.post {
+                    if (utteranceId != currentUtteranceId) return@post
                     // Seek the silent track to this sentence's predicted start so
                     // the notification's progress bar advances per sentence.
                     val startMs = PlaybackDataRepository.getSentenceStartMs(currentSentenceIndex)
@@ -350,6 +412,7 @@ class PlaybackService : MediaSessionService() {
                 // not a finished sentence — advancing here would skip a heading.
                 if (utteranceId.isSectionGap()) return
                 mainHandler.post {
+                    if (utteranceId != currentUtteranceId) return@post
                     currentSentenceIndex++
                     if (player.playWhenReady) speakNextSentence()
                 }
@@ -358,7 +421,9 @@ class PlaybackService : MediaSessionService() {
             override fun onError(utteranceId: String?) {
                 if (utteranceId.isSectionGap()) return
                 Log.e(TAG, "TTS error on: $utteranceId")
-                mainHandler.post { player.playWhenReady = false }
+                mainHandler.post {
+                    if (utteranceId == currentUtteranceId) player.playWhenReady = false
+                }
             }
         })
     }
@@ -607,6 +672,7 @@ class PlaybackService : MediaSessionService() {
         // the engine has been partially reclaimed by the system. Swallow it
         // so a pause never crashes the process — the worst case is that the
         // current utterance finishes naturally.
+        currentUtteranceId = null   // so late callbacks from the stopped sentence are ignored
         try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
         // Belt-and-braces: onStart already persisted this sentence's index when
         // it began speaking, but a pause is exactly the moment a task-removal
@@ -713,6 +779,7 @@ class PlaybackService : MediaSessionService() {
             pendingStartIndex = index
             return
         }
+        currentUtteranceId = null   // so late callbacks from the stopped sentence are ignored
         try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
         // An explicit play/seek supersedes any pending post-call resume, and any
         // next-file fetch still running from the end of the previous page.
@@ -734,6 +801,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun stopPlayback() {
+        currentUtteranceId = null   // so late callbacks from the stopped sentence are ignored
         if (isTtsReady) try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
         pausedForCall = false
         advanceJob?.cancel()
@@ -770,7 +838,9 @@ class PlaybackService : MediaSessionService() {
                     )
                 }
                 val queueMode = if (opensSection) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH
-                tts.speak(sentence, queueMode, null, UUID.randomUUID().toString())
+                val id = UUID.randomUUID().toString()
+                currentUtteranceId = id
+                tts.speak(sentence, queueMode, null, id)
             } catch (e: Exception) {
                 Log.e(TAG, "tts.speak() failed", e)
                 player.playWhenReady = false
@@ -792,15 +862,22 @@ class PlaybackService : MediaSessionService() {
      */
     private fun onPageFinished() {
         val url = PlaybackDataRepository.pageUrl
-        if (url == null || !isTextDocument(url)) {
+        // A text file finds its next file itself; a web page carries on only
+        // if its extraction found a next chapter (PlaybackDataRepository.nextUrl).
+        val textFile = url != null && isTextDocument(url)
+        val nextPage = PlaybackDataRepository.nextUrl
+        if (url == null || (!textFile && nextPage == null)) {
             endPlayback()
             return
         }
         val generation = PlaybackDataRepository.generation
         advanceJob?.cancel()
         advanceJob = serviceScope.launch {
-            val enabled = settingsRepo.prefsFlow.first().continueToNextFile
-            val advanced = enabled && advanceToNextFile(url, generation)
+            val prefs = settingsRepo.prefsFlow.first()
+            val advanced = prefs.continueToNextFile && when {
+                textFile -> advanceToNextFile(url, generation)
+                else -> advanceToNextPage(nextPage!!, prefs.readerMode, generation)
+            }
             // A page the user loaded meanwhile is theirs; don't stop it.
             if (!advanced && PlaybackDataRepository.generation == generation) endPlayback()
         }
@@ -841,33 +918,132 @@ class PlaybackService : MediaSessionService() {
         val narration = withContext(Dispatchers.Default) {
             buildNarration(listOf(PageBlock(text, "")), language)
         }
+        return adoptNextPage(
+            url = nextUrl,
+            narration = narration,
+            language = language,
+            title = readableTitle(nextUrl, nextUrl) ?: nextUrl,
+            imageUrl = null,
+            nextUrl = null,
+            generation = generation
+        )
+    }
+
+    /**
+     * Continue into the next *web* chapter. Its text has to come out of a
+     * WebView — the same extraction script the app runs, so the sentences match
+     * what the app shows when it follows along and the highlight finds them —
+     * and the service, reading with the screen off, has none. So it loads the
+     * page in one of its own, for as long as the extraction takes.
+     */
+    private suspend fun advanceToNextPage(nextUrl: String, readerMode: Boolean, generation: Int): Boolean {
+        val page = extractInBackground(nextUrl, readerMode) ?: return false
+        val narration = withContext(Dispatchers.Default) { buildNarration(page.blocks, page.lang) }
         if (narration.display.isEmpty()) return false
+        return adoptNextPage(
+            url = page.url,
+            narration = narration,
+            language = page.lang,
+            title = readableTitle(page.title, page.url) ?: page.url,
+            imageUrl = page.imageUrl,
+            nextUrl = acceptNextUrl(page.url, page.nextUrl),
+            generation = generation
+        )
+    }
+
+    private class ExtractedPage(
+        val url: String,
+        val title: String,
+        val lang: String?,
+        val blocks: List<PageBlock>,
+        val imageUrl: String?,
+        val nextUrl: String?
+    )
+
+    /**
+     * Load [url] in a WebView that is never shown and run the extraction script
+     * on it. Null on a timeout or a page that yields no text. The WebView shares
+     * the app's cookies (CookieManager is process-wide), so chapters behind a
+     * login made in the app load too. Server-rendered pages have their text at
+     * onPageFinished; client-rendered ones may fill in a moment later, hence
+     * the short retry. Always destroyed afterwards — it is a whole renderer.
+     */
+    private suspend fun extractInBackground(url: String, readerMode: Boolean): ExtractedPage? =
+        withTimeoutOrNull(CHAPTER_LOAD_TIMEOUT_MS) {
+            val view = WebView(this@PlaybackService)
+            try {
+                view.settings.javaScriptEnabled = true
+                view.settings.domStorageEnabled = true
+                CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
+                val loaded = CompletableDeferred<Unit>()
+                view.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(v: WebView?, u: String?) {
+                        loaded.complete(Unit)
+                    }
+                }
+                view.loadUrl(url)
+                loaded.await()
+                repeat(10) {
+                    val page = suspendCancellableCoroutine { cont ->
+                        extractTexts(view, readerMode) { lang, blocks, image, next ->
+                            if (cont.isActive) {
+                                cont.resume(
+                                    ExtractedPage(view.url ?: url, view.title.orEmpty(), lang, blocks, image, next)
+                                )
+                            }
+                        }
+                    }
+                    if (page.blocks.any { it.text.isNotBlank() }) return@withTimeoutOrNull page
+                    delay(500)
+                }
+                null
+            } finally {
+                view.stopLoading()
+                view.destroy()
+            }
+        }
+
+    /**
+     * Make [url] the page being read, at its saved position, and keep reading.
+     * Shared by text files and web chapters. Returns false when anything
+     * happened meanwhile (a new page, a skip, a stop): what the user did wins.
+     */
+    private suspend fun adoptNextPage(
+        url: String,
+        narration: PageNarration,
+        language: String?,
+        title: String,
+        imageUrl: String?,
+        nextUrl: String?,
+        generation: Int
+    ): Boolean {
         // Checked before writing anything as well as after: a page the user
         // opened while this was fetching owns the "last page" record, and
         // writing ours over it would reopen the app on the wrong page.
         if (PlaybackDataRepository.generation != generation) return false
-        val name = readableTitle(nextUrl, nextUrl) ?: nextUrl
         // A chapter read before resumes where it stopped; a finished one restarts.
-        val saved = settingsRepo.savedPositionFor(nextUrl)
+        val saved = settingsRepo.savedPositionFor(url)
         val start = if (saved >= narration.display.lastIndex) 0 else saved
         // History first: reading positions are only recorded against pages that
         // have a history entry.
-        settingsRepo.addHistory(WebPage(nextUrl, name))
-        settingsRepo.updateLastUrl(nextUrl)
+        settingsRepo.addHistory(WebPage(url, title))
+        settingsRepo.updateLastUrl(url)
         settingsRepo.updateLastIndex(start)
         if (PlaybackDataRepository.generation != generation) return false
         PlaybackDataRepository.setSentences(
             narration.display,
             language = language,
-            pageUrl = nextUrl,
+            pageUrl = url,
             startIndex = start,
             spokenSentences = narration.spoken,
             sectionStarts = narration.sectionStarts,
             sectionTitles = narration.sectionTitles,
-            title = name
+            title = title,
+            imageUrl = imageUrl,
+            nextUrl = nextUrl
         )
         PlaybackDataRepository.autoAdvances++
-        Log.d(TAG, "Continuing into $nextUrl at sentence $start")
+        Log.d(TAG, "Continuing into $url at sentence $start")
         // Paused while fetching: leave it loaded, and Play resumes it there.
         if (player.playWhenReady) {
             advanceJob = null   // startPlayback cancels advanceJob — not this one
@@ -981,6 +1157,7 @@ class PlaybackService : MediaSessionService() {
             mediaSession = null
         }
         if (::tts.isInitialized) {
+            currentUtteranceId = null   // so late callbacks from the stopped sentence are ignored
             try { tts.stop() } catch (e: Exception) { Log.e(TAG, "tts.stop() failed", e) }
             try { tts.shutdown() } catch (e: Exception) { Log.e(TAG, "tts.shutdown() failed", e) }
         }

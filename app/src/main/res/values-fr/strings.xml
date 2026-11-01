@@ -27,7 +27,7 @@
     <string name="text_zoom_percent">%1$d %%</string>
     <string name="menu_reader_mode">Mode lecture</string>
     <string name="menu_follow_along">Suivi de lecture</string>
-    <string name="menu_continue_next_file">Enchaîner sur le fichier suivant</string>
+    <string name="menu_continue_next_file">Enchaîner sur le chapitre suivant</string>
     <string name="menu_reading_speed">Vitesse de lecture</string>
     <string name="menu_settings">Paramètres</string>
     <string name="menu_tts_settings">Paramètres de synthèse vocale</string>

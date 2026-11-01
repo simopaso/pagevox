@@ -62,6 +62,13 @@ object PlaybackDataRepository {
     var imageUrl: String? = null
         private set
 
+    /** The page's next chapter, found by the extraction script (rel=next, a
+     *  numbered chapter link, or a "Next" link) and validated by acceptNextUrl.
+     *  The service continues into it when this page ends. Null when none. */
+    @Volatile
+    var nextUrl: String? = null
+        private set
+
     /**
      * Bumped every time the sentence set is replaced or cleared. The service
      * compares it against the generation its silent track was built for, which is
@@ -131,7 +138,8 @@ object PlaybackDataRepository {
         sectionStarts: List<Int> = emptyList(),
         sectionTitles: List<String> = emptyList(),
         title: String = "",
-        imageUrl: String? = null
+        imageUrl: String? = null,
+        nextUrl: String? = null
     ) {
         generation++
         _sentences.clear()
@@ -154,6 +162,7 @@ object PlaybackDataRepository {
         this.language = language
         this.pageUrl = pageUrl
         this.pageTitle = title
+        this.nextUrl = nextUrl
         // The image URL comes from the page, and the media session hands it to
         // a loader that also reads file:// and content:// URIs. Anything but a
         // web URL would let a page make this app read local files as "artwork".
@@ -189,7 +198,8 @@ object PlaybackDataRepository {
             spoken = _spokenSentences.toList(),
             sectionStarts = _sectionStarts.toList(),
             sectionTitles = _sectionTitles.toList(),
-            imageUrl = imageUrl
+            imageUrl = imageUrl,
+            nextUrl = nextUrl
         )
     }
 
@@ -203,7 +213,8 @@ object PlaybackDataRepository {
         sectionStarts = snapshot.sectionStarts,
         sectionTitles = snapshot.sectionTitles,
         title = snapshot.title,
-        imageUrl = snapshot.imageUrl
+        imageUrl = snapshot.imageUrl,
+        nextUrl = snapshot.nextUrl
     )
 
     fun clear() {
@@ -219,6 +230,7 @@ object PlaybackDataRepository {
         pageUrl = null
         pageTitle = ""
         imageUrl = null
+        nextUrl = null
         currentIndex = 0
     }
 

@@ -236,7 +236,8 @@ class PlaybackDataRepositoryTest {
             sectionStarts = listOf(0),
             sectionTitles = listOf("Heading"),
             title = "A page",
-            imageUrl = "https://example.com/p.jpg"
+            imageUrl = "https://example.com/p.jpg",
+            nextUrl = "https://example.com/p2"
         )
         val snapshot = PlaybackDataRepository.snapshot()!!
         PlaybackDataRepository.clear()

@@ -14,7 +14,8 @@ class NowPlayingTest {
         spoken = listOf("Otsikko", "Ensimmäinen virke.", "Toinen \"lainaus\" virke."),
         sectionStarts = listOf(0),
         sectionTitles = listOf("Otsikko"),
-        imageUrl = "https://example.com/lead.jpg"
+        imageUrl = "https://example.com/lead.jpg",
+        nextUrl = "https://example.com/story/2"
     )
 
     @Test
@@ -24,7 +25,7 @@ class NowPlayingTest {
 
     @Test
     fun nullableFieldsRoundTripAsNull() {
-        val bare = snapshot.copy(language = null, imageUrl = null)
+        val bare = snapshot.copy(language = null, imageUrl = null, nextUrl = null)
         assertEquals(bare, parseNowPlaying(bare.toJson()))
     }
 

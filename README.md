@@ -12,7 +12,8 @@
 - **Read any page aloud** — extracts the readable text from a web page or plain-text document and speaks it with the system TTS engine.
 - **Background playback** — a Media3 `MediaSessionService` keeps reading when you leave the app, with play/pause, skip, and a progress bar in the notification and on the lock screen. The player shows the page's title, the section being read and the lead image, with buttons to jump a whole section, and stays for ten minutes after you pause.
 - **Steps aside for calls and directions** — reading pauses for phone calls (including over Bluetooth) and for navigation prompts, and picks up again afterwards.
-- **Chapter files play through** — when a text file ends, PageVox finds the next file in the same folder and keeps reading, even with the screen off. Can be turned off in the menu.
+- **Chapters play through** — when a text file ends, PageVox finds the next file in the same folder; when a web page ends, it follows the page's link to the next chapter (`rel="next"`, a numbered chapter link, or a "Next" link). Either way it keeps reading, even with the screen off. Can be turned off in the menu.
+- **Headphone and car buttons** — next/previous jump a section, fast-forward/rewind a sentence.
 - **Resume from your headphones** — press Play on headphones or a car stereo to carry on where you stopped, even hours later after Android has closed the paused app.
 - **Tap to start anywhere** — tap a paragraph to begin reading from that sentence.
 - **Follow-along** — the sentence being read is highlighted on the page and auto-scrolled into view, karaoke style. Toggle it off for audio-only.
@@ -61,7 +62,7 @@ The app runs the UI and a media-session service in the same process, bridged by 
 | `SettingsRepository.kt` | DataStore-backed preferences, history, and bookmarks, plus backup export/import. |
 | `LibraryBackup.kt` | The backup file format: settings, history and bookmarks as versioned JSON. |
 | `NowPlaying.kt` | On-disk snapshot of the page being read, so a headphone Play press can resume it in a fresh process. |
-| `NextChapter.kt` | Finds and fetches the next text file in a folder (server listing, else numbered name), so chapter files play through. |
+| `NextChapter.kt` | Finds and fetches the next text file in a folder (server listing, else numbered name), and vets a web page's next-chapter link, so chapters play through. |
 | `UrlUtils.kt` | Address-bar input resolution and URL normalization helpers. |
 | `PlaybackService.kt` | A Media3 `MediaSessionService` that owns the `TextToSpeech` engine, speaks sentences, and drives a silent ExoPlayer track so the notification's progress bar reflects reading position. Resumes the last page from its snapshot when a headphone Play press restarts it. |
 | `PlaybackDataRepository.kt` | In-process bridge between UI and service: the sentence list (verbatim and spoken forms) with estimated durations, section boundaries, page language, speech rate, and the selected voice. |
@@ -94,7 +95,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.22**.
+Personal project, actively developed. Current version: **2.23**.
 
 ## Supporting development
 

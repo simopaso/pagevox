@@ -240,14 +240,14 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     fun extractShownPage(onReady: () -> Unit, attempt: Int = 0) {
         val view = webView ?: return
         val forUrl = view.url
-        extractTexts(view, viewModel.readerMode) { lang, blocks, image ->
+        extractTexts(view, viewModel.readerMode) { lang, blocks, image, next ->
             val nothingYet = blocks.none { it.text.isNotBlank() }
             if (nothingYet && view.progress < 100 && attempt < 10) {
                 view.postDelayed({
                     if (view.url == forUrl) extractShownPage(onReady, attempt + 1)
                 }, 500)
             } else {
-                viewModel.onTextsExtracted(lang, blocks, image, onReady)
+                viewModel.onTextsExtracted(lang, blocks, image, next, onReady)
             }
         }
     }

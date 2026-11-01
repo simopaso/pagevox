@@ -12,11 +12,12 @@ import java.nio.charset.Charset
  * Finding and fetching the file after the one just read, so a book split into
  * chapter files plays through instead of stopping at every chapter.
  *
- * Only plain-text documents qualify. Their text needs no WebView to extract —
- * the whole file is one block, exactly what the page script would return — so
- * the playback service can do all of this itself with the screen off and the
- * activity long gone. An HTML page would need a WebView to run the extraction
- * script in, which the service doesn't have.
+ * This file covers plain-text documents, whose text needs no WebView to
+ * extract — the whole file is one block, exactly what the page script would
+ * return — so the playback service fetches and splits them itself. Web pages
+ * continue too, but differently: their next chapter is found by the page
+ * script while the page is extracted ([acceptNextUrl] checks it), and the
+ * service loads it in a WebView of its own (PlaybackService.extractInBackground).
  *
  * Everything above [fetchNextTextFile] is pure and unit-tested.
  */
@@ -25,6 +26,25 @@ private const val TAG = "NextChapter"
 
 // Extensions treated as plain text. The next file must share the current one's.
 private val TEXT_EXTENSIONS = setOf("txt", "text", "md")
+
+/**
+ * [candidate] as the next chapter of [pageUrl], or null. The page script that
+ * found it already restricts it to the same site, but the page's JavaScript
+ * can't be trusted to: web URLs only, the same host, never the page itself,
+ * and nothing absurdly long. The service will load this URL by itself with
+ * the screen off, so it must not be able to send it anywhere else.
+ */
+internal fun acceptNextUrl(pageUrl: String?, candidate: String?): String? {
+    val c = candidate?.trim()?.takeIf { it.isNotEmpty() && it.length <= 2048 } ?: return null
+    val next = runCatching { URI(c) }.getOrNull() ?: return null
+    val scheme = next.scheme?.lowercase()
+    if (scheme != "http" && scheme != "https") return null
+    val page = pageUrl?.let { runCatching { URI(it.trim()) }.getOrNull() } ?: return null
+    val host = next.host?.takeIf { it.isNotBlank() } ?: return null
+    if (!host.equals(page.host, ignoreCase = true)) return null
+    if (samePath(c, pageUrl) && next.rawQuery == page.rawQuery) return null
+    return c
+}
 
 /** Decoded last path segment of [url], or null. */
 private fun fileName(url: String): String? =

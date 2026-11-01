@@ -64,7 +64,44 @@ internal fun extractTextJs(readerMode: Boolean) = """
     if (im && im.content) {
         try { image = new URL(im.content.trim(), document.baseURI).href; } catch (e) {}
     }
-    return JSON.stringify({ lang: lang, texts: texts, tags: tags, image: image });
+    // The next chapter, if this page has one: a rel=next link; else this URL
+    // with the last number bumped (/story/7 -> /story/8), but only when the page
+    // links to it, which is what chapter navigation looks like; else a link
+    // labelled "Next" or "Next chapter" in one of the app's languages. Same site
+    // only — and the Kotlin side re-checks whatever comes back.
+    var next = '';
+    try {
+        var here = location.href.split('#')[0];
+        var abs = function(h) {
+            try {
+                var u = new URL(h, document.baseURI);
+                if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.host !== location.host) return '';
+                u.hash = '';
+                return u.href === here ? '' : u.href;
+            } catch (e) { return ''; }
+        };
+        var rel = document.querySelector('link[rel~="next" i][href], a[rel~="next" i][href]');
+        if (rel) next = abs(rel.getAttribute('href'));
+        var links = document.querySelectorAll('a[href]');
+        var m = next ? null : location.pathname.match(/^(.*?)(\d+)(\/?)$/);
+        if (m) {
+            var bumped = String(Number(m[2]) + 1);
+            while (m[2].charAt(0) === '0' && bumped.length < m[2].length) bumped = '0' + bumped;
+            var want = new URL(m[1] + bumped + m[3], location.href).href.replace(/\/$/, '');
+            for (var i = 0; i < links.length && !next; i++) {
+                var c = abs(links[i].getAttribute('href'));
+                if (c && c.split('?')[0].replace(/\/$/, '') === want) next = c;
+            }
+        }
+        var label = /^[\s‹«←<›»→>]*(next|next chapter|next page|next part|seuraava|seuraava luku|seuraava osa|seuraava sivu|nästa|nästa kapitel|nästa del|nästa sida|weiter|nächstes kapitel|nächster teil|nächste seite|suivant|chapitre suivant|partie suivante|page suivante)[\s›»→>]*(?:[:\n][\s\S]*)?$/i;
+        for (var j = 0; j < links.length && !next; j++) {
+            var a = links[j];
+            var t = (a.innerText || a.textContent || '').trim();
+            var al = (a.getAttribute('aria-label') || '').trim();
+            if (label.test(t) || label.test(al)) next = abs(a.getAttribute('href'));
+        }
+    } catch (e) { next = ''; }
+    return JSON.stringify({ lang: lang, texts: texts, tags: tags, image: image, next: next });
 })();
 """.trimIndent()
 
@@ -78,6 +115,14 @@ internal fun tapDetectionJs(pxX: Float, pxY: Float) = """
 (function() {
     var cx = $pxX / window.devicePixelRatio;
     var cy = $pxY / window.devicePixelRatio;
+
+    // A tap on a link or a control navigates or acts; it isn't a request to
+    // read from there. Without this, opening a menu link on a page that was
+    // being read also jumped the reading to the link's text.
+    var hit = document.elementFromPoint(cx, cy);
+    if (hit && hit.closest && hit.closest(
+        'a[href], button, [role="button"], [role="link"], [role="tab"], [role="menuitem"], ' +
+        'input, select, textarea, label, summary, [contenteditable="true"]')) return '';
 
     var textNode = null, offset = 0;
     if (document.caretRangeFromPoint) {
@@ -257,7 +302,7 @@ data class PageBlock(val text: String, val tag: String) {
 internal fun extractTexts(
     webView: WebView?,
     readerMode: Boolean,
-    onResult: (lang: String?, blocks: List<PageBlock>, imageUrl: String?) -> Unit
+    onResult: (lang: String?, blocks: List<PageBlock>, imageUrl: String?, nextUrl: String?) -> Unit
 ) {
     webView?.evaluateJavascript(extractTextJs(readerMode)) { result ->
         try {
@@ -265,19 +310,20 @@ internal fun extractTexts(
             val obj = JSONObject(jsonStr)
             val lang = obj.optString("lang").ifBlank { null }
             val image = obj.optString("image").ifBlank { null }
+            val next = obj.optString("next").ifBlank { null }
             val arr = obj.getJSONArray("texts")
             // tags is absent only if a cached script from an older build ran;
             // treat a missing entry as an untagged block rather than failing.
             val tags = obj.optJSONArray("tags")
             onResult(lang, (0 until arr.length()).map { i ->
                 PageBlock(arr.getString(i), tags?.optString(i).orEmpty())
-            }, image)
+            }, image, next)
         } catch (e: Exception) {
             // A script run mid-navigation returns "null" rather than our JSON.
             // Report it as a page with no text yet, so the caller can retry
             // instead of the press silently doing nothing.
             Log.w(TAG, "Text extraction failed", e)
-            onResult(null, emptyList(), null)
+            onResult(null, emptyList(), null, null)
         }
     }
 }

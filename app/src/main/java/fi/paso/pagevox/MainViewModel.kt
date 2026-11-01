@@ -362,6 +362,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         lang: String?,
         blocks: List<PageBlock>,
         imageUrl: String?,
+        nextUrl: String?,
         onReadyToPlay: () -> Unit
     ) {
         viewModelScope.launch {
@@ -386,7 +387,10 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
                     sectionTitles = result.sectionTitles,
                     // For the media notification (and the resume snapshot).
                     title = currentPageTitle,
-                    imageUrl = imageUrl
+                    imageUrl = imageUrl,
+                    // Where reading carries on when this page ends (web
+                    // chapters); checked again here rather than trusted.
+                    nextUrl = acceptNextUrl(url, nextUrl)
                 )
                 onReadyToPlay()
             }
