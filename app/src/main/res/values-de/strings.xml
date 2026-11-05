@@ -111,4 +111,5 @@
     <string name="download_confirm">%1$s herunterladen?</string>
     <string name="download_action">Herunterladen</string>
     <string name="download_failed">Diese Datei kann nicht heruntergeladen werden</string>
+    <string name="page_keeps_crashing">Diese Seite stürzt immer wieder ab</string>
 </resources>

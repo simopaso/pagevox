@@ -82,4 +82,17 @@ class LibraryBackupTest {
     fun nonJsonIsRejected() {
         parseLibraryBackup("PK\u0003\u0004 definitely a zip file")
     }
+
+    @Test
+    fun aReadingPlaceAnchorSurvivesABackup() {
+        val page = WebPage("https://example.com/a", "A", position = 3, sentenceCount = 9, anchor = "The third sentence")
+        assertEquals(page, pageFromJson(pageToJson(page)))
+    }
+
+    @Test
+    fun aBackupFromBeforeAnchorsStillRestores() {
+        val page = pageFromJson(org.json.JSONObject("""{"url":"https://example.com/a","position":3}"""))
+        assertEquals("", page?.anchor)
+        assertEquals(3, page?.position)
+    }
 }

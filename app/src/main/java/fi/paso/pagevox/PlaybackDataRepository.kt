@@ -115,6 +115,17 @@ object PlaybackDataRepository {
     var currentIndex: Int = 0
 
     /**
+     * When something was last read aloud, wall-clock, which is how a resume knows
+     * how long the break was (see [rewindAfterBreak]). Stamped at every sentence
+     * start and at a pause, rather than only at a pause, so a process killed
+     * mid-sentence still counts as a break. A singleton for the same reason as
+     * [currentIndex]: a paused service doesn't live long. 0 means not known yet;
+     * a fresh process fills it in from disk.
+     */
+    @Volatile
+    var lastSpokenAtMs: Long = 0L
+
+    /**
      * TTS speech-rate multiplier (1.0 = normal). Set from the UI layer and read
      * by the playback service before each utterance, so rate changes take effect
      * without re-plumbing through the media session. Setting it also rescales

@@ -1,8 +1,12 @@
 package fi.paso.pagevox
 
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.KeyboardActions
@@ -38,7 +42,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
+private const val FOCUS_TAP_WINDOW_MS = 500L
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddressBar(
     url: String,
@@ -49,6 +55,7 @@ fun AddressBar(
 ) {
     var field by remember { mutableStateOf(TextFieldValue(url, TextRange(url.length))) }
     var focused by remember { mutableStateOf(false) }
+    var keepSelectedUntil by remember { mutableStateOf(0L) }
     val focusManager = LocalFocusManager.current
     val text = field.text
     var expanded by remember { mutableStateOf(false) }
@@ -58,6 +65,18 @@ fun AddressBar(
     // their input (the field was keyed on url with remember(url)).
     LaunchedEffect(url) {
         if (!focused) field = TextFieldValue(url, TextRange(url.length))
+    }
+
+    // Closing the keyboard ends the edit, as it does in Chrome. Back only hides the
+    // keyboard: the field would stay focused, and the next tap would move the cursor
+    // in it instead of selecting the address. Waits to have seen the keyboard open,
+    // since it's still closed at the moment the field gains focus, and because with a
+    // hardware keyboard it never opens and the field has to keep working.
+    val keyboardOpen = WindowInsets.isImeVisible
+    var keyboardWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(keyboardOpen) {
+        if (keyboardWasOpen && !keyboardOpen && focused) focusManager.clearFocus()
+        keyboardWasOpen = keyboardOpen
     }
 
     // Match history (url or title) against what's typed. Don't suggest when the
@@ -95,8 +114,20 @@ fun AddressBar(
                 OutlinedTextField(
                     value = field,
                     onValueChange = {
-                        field = it
-                        expanded = it.text.isNotBlank()
+                        // Selecting on focus isn't enough: the tap that gave the field
+                        // focus finishes afterwards and puts the cursor where the finger
+                        // landed, undoing the selection. That arrives here as the same
+                        // text with an empty selection, so turn it back into the whole
+                        // address. Timed rather than counted, because it can arrive more
+                        // than once; a later tap is someone placing the cursor.
+                        val tapAfterFocus = SystemClock.uptimeMillis() < keepSelectedUntil &&
+                            it.text == field.text && it.selection.collapsed
+                        if (tapAfterFocus) {
+                            field = it.copy(selection = TextRange(0, it.text.length))
+                        } else {
+                            field = it
+                            expanded = it.text.isNotBlank()
+                        }
                     },
                     modifier = Modifier
                         .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, enabled = true)
@@ -107,6 +138,7 @@ fun AddressBar(
                                 // When the bar gains focus, select the whole URL so typing
                                 // instantly replaces it (Chrome-like behavior).
                                 field = field.copy(selection = TextRange(0, field.text.length))
+                                keepSelectedUntil = SystemClock.uptimeMillis() + FOCUS_TAP_WINDOW_MS
                             } else {
                                 // Abandoning an edit restores the page URL.
                                 field = TextFieldValue(url, TextRange(url.length))

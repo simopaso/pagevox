@@ -155,4 +155,63 @@ class NarrationTextTest {
         )
         assertEquals(n.display.size, n.spoken.size)
     }
+
+    private fun p(text: String) = PageBlock(text, "p")
+    private fun h(level: Int, text: String) = PageBlock(text, "h$level")
+    private val article = listOf(h(1, "Helsinki"), p("First paragraph."), p("Second paragraph."))
+
+    @Test
+    fun endMatterAfterTheArticleIsNotRead() {
+        val blocks = article + listOf(
+            h(2, "See also"), p("A link."), h(2, "Notes"), p("A note."),
+            h(2, "References"), p("A book."), h(2, "External links"), p("A site.")
+        )
+        assertEquals(article, withoutEndMatter(blocks))
+    }
+
+    @Test
+    fun aSubsectionOfEndMatterIsEndMatter() {
+        val blocks = article + listOf(
+            h(2, "Annexes"), h(3, "Ouvrages"), p("Un livre."), h(3, "Articles connexes"), p("Un lien.")
+        )
+        assertEquals(article, withoutEndMatter(blocks))
+    }
+
+    @Test
+    fun aRealSectionAfterIt_meansItWasNotEndMatter() {
+        val blocks = article + listOf(h(2, "Notes"), p("Notes on the text."), h(2, "Chapter two"), p("More story."))
+        assertEquals(blocks, withoutEndMatter(blocks))
+    }
+
+    @Test
+    fun onlyTheLastStretchIsCut() {
+        val kept = article + listOf(h(2, "Notes"), p("Early notes."), h(2, "History"), p("Some history."))
+        assertEquals(kept, withoutEndMatter(kept + listOf(h(2, "References"), p("A book."))))
+    }
+
+    @Test
+    fun aPageThatIsOnlyAReferenceListIsLeftWhole() {
+        val blocks = listOf(h(1, "Sources"), p("One source."), p("Another source."))
+        assertEquals(blocks, withoutEndMatter(blocks))
+        val titled = listOf(h(1, "Reading list"), p("Intro."), h(2, "Bibliography"), p("A book."))
+        assertEquals(titled, withoutEndMatter(titled))
+    }
+
+    @Test
+    fun endMatterIsRecognisedInEveryLanguageAndWithAnEditLink() {
+        listOf(
+            "Katso myös", "Lähteet", "Se även", "Referenser", "Siehe auch", "Einzelnachweise",
+            "Voir aussi", "Notes et références", "See also[edit]", "Lähteet[muokkaa | muokkaa wikitekstiä]",
+            "REFERENCES", "References:", "  See   also "
+        ).forEach { title ->
+            assertEquals(title, article, withoutEndMatter(article + listOf(h(2, title), p("Text."))))
+        }
+    }
+
+    @Test
+    fun narrationEndsWithTheArticleAndDropsItsSectionMarks() {
+        val n = buildNarration(article + listOf(h(2, "References"), p("A book.")))
+        assertEquals(listOf("Helsinki", "First paragraph.", "Second paragraph."), n.display)
+        assertEquals(listOf("Helsinki"), n.sectionTitles)
+    }
 }

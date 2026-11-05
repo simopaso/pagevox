@@ -17,7 +17,7 @@
 - **Resume from your headphones** — press Play on headphones or a car stereo to carry on where you stopped, even hours later after Android has closed the paused app.
 - **Tap to start anywhere** — tap a paragraph to begin reading from that sentence.
 - **Follow-along** — the sentence being read is highlighted on the page and auto-scrolled into view, karaoke style. Toggle it off for audio-only.
-- **Reads the page, not the site around it** — menus, footers, sidebars, pop-ups and reference lists are skipped, invisible text stays silent, and sections a page has folded away are opened and read.
+- **Reads the page, not the site around it** — menus, footers, sidebars, pop-ups and reference lists are skipped, invisible text stays silent, sections a page has folded away are opened and read, and reading stops at the end of the article, before lists like See also and References.
 - **Reader mode** — goes further: reads only the main article, and strips ads and clutter from the page for distraction-free reading.
 - **Reading-position scrubber** — a full-width scrubber above the controls to jump anywhere in the page, with a live preview of the sentence you'll land on, section marks on the track, and the current heading above it.
 - **Section navigation** — long-press skip to jump a whole section (heading) at a time; headings get a short pause in front of them so they land as chapter breaks.
@@ -35,7 +35,7 @@
 - **Quick navigation** — back/forward, up-one-folder, home, and a full-width address bar.
 - **Sites that need a login** — cookies (including third-party, for single sign-on), popup sign-in buttons resolved into the same window, HTTP Basic/Digest credential prompts with optional saving, links to other apps handed to the system, and a "Clear cookies and sign out" action.
 - **Share & open-with** — send text or links from other apps to PageVox, or set it as a handler for `http`/`https` links.
-- **Resumes where you left off** — the last page and reading position are restored on launch, and every page in your history remembers its own reading position.
+- **Resumes where you left off** — the last page and reading position are restored on launch, and every page in your history remembers its own reading position, by the sentence itself, so it survives the page changing. After a break of more than a few minutes, reading starts a couple of sentences earlier to help you find the thread.
 - **Big screens and foldables** — on an unfolded foldable, a tablet or a phone in landscape the controls move into a side rail and the page keeps the full height of the window, with the library or the page's contents available as a panel beside the page rather than on top of it. Folding, unfolding and rotating keep the page loaded and the reading position intact.
 - **Material You** — dynamic color, edge-to-edge, and light/dark theming.
 
@@ -58,6 +58,7 @@ The app runs the UI and a media-session service in the same process, bridged by 
 | `MainScreen.kt` | Top-level Compose screen: scaffold, the adaptive control bar/rail, side panels, dialogs wiring. |
 | `AddressBar.kt`, `LibrarySheet.kt`, `SettingsDialog.kt`, `ReadingScrubber.kt`, `ContentsPanel.kt` | Individual UI components. |
 | `WebViewContainer.kt` | WebView host: page lifecycle, tap-to-seek, follow-along highlight, state save/restore. |
+| `ReadingPlace.kt` | Saved reading positions that find their sentence again after a page changes, and how far to rewind after a long break. |
 | `PageScripts.kt` | The JavaScript injected into pages: text extraction (with the source element's tag, for sections), tap detection, reader mode, sentence highlighting. |
 | `NarrationText.kt` | Turns extracted blocks into the sentence set: cleans the text for speech and maps each cleaned sentence back to the verbatim page text it came from. |
 | `SettingsRepository.kt` | DataStore-backed preferences, history, and bookmarks, plus backup export/import. |
@@ -96,7 +97,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.25**.
+Personal project, actively developed. Current version: **2.26**.
 
 ## Supporting development
 

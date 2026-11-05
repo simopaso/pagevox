@@ -59,6 +59,10 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
 
     private var initialIndex = 0
 
+    // The saved place [initialIndex] came from, kept until the page's sentences
+    // exist to look it up in. See onTextsExtracted.
+    private var restoredPlace: SavedPlace? = null
+
     // The PlaybackDataRepository.autoAdvances count this ViewModel has caught up
     // with. Starts at the current value: a ViewModel created after the player
     // moved on already opens on the new file (the service updated the last URL),
@@ -88,11 +92,15 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         viewModelScope.launch {
             val prefs = repo.prefsFlow.first()
             applyPreferences(prefs)
+            if (PlaybackDataRepository.lastSpokenAtMs == 0L) {
+                PlaybackDataRepository.lastSpokenAtMs = repo.lastSpokenAt()
+            }
             // Only restore the saved page if a share/VIEW intent hasn't already
             // set a URL (loadUrl runs synchronously in onCreate, before this).
             if (url.isEmpty()) {
                 url = prefs.lastUrl
                 initialIndex = prefs.lastSentenceIndex
+                restoredPlace = repo.savedPlaceFor(prefs.lastUrl)
                 pendingRestoreUrl = prefs.lastUrl
             }
             // Place the indicator at the saved position so it's visible before
@@ -160,9 +168,9 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         currentSentenceText = ""
         // Revisited pages resume from their saved per-page position (kept on
         // the history entry); genuinely new pages start at the top.
-        val savedPosition = history.firstOrNull {
+        val saved = history.firstOrNull {
             normalizeUrlForCompare(it.url) == normalizeUrlForCompare(newUrl)
-        }?.position ?: 0
+        }?.savedPlace ?: SavedPlace(0)
         // The player may already be reading this very page — it moved on to the
         // next file by itself, or this is a return to the page still loaded in
         // it. Take its sentences as they are: re-extracting would build the same
@@ -173,10 +181,12 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
             normalizeUrlForCompare(playing) == normalizeUrlForCompare(newUrl)
         if (adopt) {
             initialIndex = PlaybackDataRepository.currentIndex
+            restoredPlace = null
             sentences = PlaybackDataRepository.sentences.toList()
             sectionStarts = PlaybackDataRepository.sectionStarts.toList()
         } else {
-            initialIndex = savedPosition
+            initialIndex = saved.index
+            restoredPlace = saved
             sentences = emptyList()
             sectionStarts = emptyList()
         }
@@ -255,6 +265,13 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     /** Toggle reader mode. Clears extracted text so the next play re-reads the
      *  distilled content; the visual de-clutter is applied live by the WebView. */
     fun toggleReaderMode() {
+        // The two modes number the page's sentences differently, so carry the
+        // current one over by its text.
+        val index = getStartIndex()
+        sentences.getOrNull(index)?.let {
+            initialIndex = index
+            restoredPlace = SavedPlace(index, anchorFor(it), sentences.size)
+        }
         readerMode = !readerMode
         sentences = emptyList()
         sectionStarts = emptyList()
@@ -376,12 +393,18 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
                 // Seed the resume point from initialIndex (restored from disk on
                 // a cold start, or the per-page saved position when revisiting).
                 // Warm restarts don't re-extract, so this only runs when the
-                // sentence set is genuinely (re)built.
+                // sentence set is genuinely (re)built. The saved place finds the
+                // sentence again if the page has been renumbered since; only if
+                // initialIndex is still the one that came with it, since a finished
+                // page has reset it to the top by now.
+                val start = restoredPlace?.takeIf { it.index == initialIndex }
+                    ?.locateIn(result.display) ?: initialIndex
+                restoredPlace = null
                 PlaybackDataRepository.setSentences(
                     result.display,
                     language = lang,
                     pageUrl = url,
-                    startIndex = resumeIndexFor(initialIndex, result.display.size),
+                    startIndex = resumeIndexFor(start, result.display.size),
                     spokenSentences = result.spoken,
                     sectionStarts = result.sectionStarts,
                     sectionTitles = result.sectionTitles,

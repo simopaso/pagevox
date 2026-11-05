@@ -11,12 +11,14 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Message
+import android.os.SystemClock
 import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.HttpAuthHandler
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -37,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -80,12 +83,78 @@ private class WebViewStateHolder {
     var restored: Bundle? = null
 }
 
-@SuppressLint("ClickableViewAccessibility", "SetJavaScriptEnabled")
+/**
+ * The page's WebView, replaced by a new one if its renderer dies. A renderer can
+ * crash, and Android kills background renderers for memory. Left unhandled, either
+ * takes down the whole app, and the voice with it, since the service lives in the
+ * same process. A WebView can't be reused after that, so [key] throws away this
+ * one and everything remembered around it, and the new one loads the same address.
+ * Reading isn't affected: the sentences live in the service, and the highlight
+ * finds its place again when the page has loaded. Only the back history is lost.
+ *
+ * A page that takes the renderer down again straight away would otherwise reload
+ * forever, so the second time inside [RENDERER_RETRY_WINDOW_MS] it isn't reloaded.
+ */
 @Composable
 fun WebViewContainer(
     url: String,
     currentSentence: String,
     onWebViewReady: (WebView) -> Unit,
+    onWebViewGone: () -> Unit,
+    onUrlChange: (String) -> Unit,
+    onTitleChange: (String, String) -> Unit,
+    onCanGoBackChanged: (Boolean) -> Unit,
+    onNavigationPending: (Boolean) -> Unit,
+    onTextTapped: (String) -> Unit,
+    forceDark: Boolean,
+    textZoom: Int,
+    readerMode: Boolean,
+    followAlong: Boolean
+) {
+    val context = LocalContext.current
+    val latestUrl = rememberUpdatedState(url)
+    var rebuilds by remember { mutableStateOf(0) }
+    var lastGoneAt by remember { mutableStateOf(0L) }
+    var abandonedUrl by remember { mutableStateOf<String?>(null) }
+    key(rebuilds) {
+        WebViewPage(
+            url = url,
+            abandonedUrl = abandonedUrl,
+            currentSentence = currentSentence,
+            onWebViewReady = onWebViewReady,
+            onRendererGone = {
+                val now = SystemClock.uptimeMillis()
+                val again = lastGoneAt > 0L && now - lastGoneAt < RENDERER_RETRY_WINDOW_MS
+                lastGoneAt = now
+                abandonedUrl = if (again) latestUrl.value else null
+                if (again) Toast.makeText(context, R.string.page_keeps_crashing, Toast.LENGTH_LONG).show()
+                onWebViewGone()
+                rebuilds++
+            },
+            onUrlChange = onUrlChange,
+            onTitleChange = onTitleChange,
+            onCanGoBackChanged = onCanGoBackChanged,
+            onNavigationPending = onNavigationPending,
+            onTextTapped = onTextTapped,
+            forceDark = forceDark,
+            textZoom = textZoom,
+            readerMode = readerMode,
+            followAlong = followAlong
+        )
+    }
+}
+
+private const val RENDERER_RETRY_WINDOW_MS = 30_000L
+private const val EMPTY_DOCUMENT = "<!doctype html><meta name=color-scheme content='light dark'>"
+
+@SuppressLint("ClickableViewAccessibility", "SetJavaScriptEnabled")
+@Composable
+private fun WebViewPage(
+    url: String,
+    abandonedUrl: String?,
+    currentSentence: String,
+    onWebViewReady: (WebView) -> Unit,
+    onRendererGone: () -> Unit,
     onUrlChange: (String) -> Unit,
     onTitleChange: (String, String) -> Unit,
     onCanGoBackChanged: (Boolean) -> Unit,
@@ -177,6 +246,16 @@ fun WebViewContainer(
                             relayView.post { runCatching { relayView.destroy() } }
                             return true
                         }
+
+                        // Shares a renderer with the page, and any WebView in the
+                        // process that leaves this unhandled takes the app down.
+                        override fun onRenderProcessGone(
+                            relayView: WebView,
+                            detail: RenderProcessGoneDetail
+                        ): Boolean {
+                            relayView.post { runCatching { relayView.destroy() } }
+                            return true
+                        }
                     }
                     transport.webView = relay
                     resultMsg.sendToTarget()
@@ -206,6 +285,19 @@ fun WebViewContainer(
                 )
             }
             webViewClient = object : WebViewClient() {
+                /** See [WebViewContainer]. Nothing may call this view from here on,
+                 *  so it's dropped from the holder the lifecycle observer and the
+                 *  state saver go through; composition destroys it. */
+                override fun onRenderProcessGone(
+                    view: WebView,
+                    detail: RenderProcessGoneDetail
+                ): Boolean {
+                    Log.w(TAG, "Page renderer gone (crashed: ${detail.didCrash()})")
+                    stateHolder.webView = null
+                    onRendererGone()
+                    return true
+                }
+
                 /** Anything that isn't a web page belongs to another app: an
                  *  OAuth callback to a custom scheme, an "intent://" app link, a
                  *  mailto: or tel: address. Left unhandled these render as an
@@ -378,6 +470,13 @@ fun WebViewContainer(
         // variant of it), and never echo back a URL that originated from
         // onPageFinished — either would re-trigger navigation and can escalate
         // into an infinite reload loop.
+        // Something has to be loaded: a WebView that has never had a document can
+        // leave the views around it unpainted. A data: page is ignored by everything
+        // that reports addresses, so the app stays on the page that crashed.
+        if (url == abandonedUrl) {
+            webView.loadData(EMPTY_DOCUMENT, "text/html", null)
+            return@LaunchedEffect
+        }
         if (url == lastReportedUrl) return@LaunchedEffect
         val current = webView.url
         if (current != null &&
@@ -411,7 +510,7 @@ fun WebViewContainer(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 val sentence = latestSentence.value
-                if (latestFollowAlong.value && sentence.isNotEmpty()) {
+                if (stateHolder.webView != null && latestFollowAlong.value && sentence.isNotEmpty()) {
                     webView.evaluateJavascript(highlightSentenceJs(JSONObject.quote(sentence)), null)
                 }
             }

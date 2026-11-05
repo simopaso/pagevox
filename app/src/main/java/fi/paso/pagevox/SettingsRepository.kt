@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
@@ -88,13 +89,18 @@ data class WebPage(
     val title: String,
     val position: Int = 0,
     val sentenceCount: Int = 0,
-    val remainingMs: Long = 0L
-)
+    val remainingMs: Long = 0L,
+    /** The start of the sentence at [position]: see [SavedPlace]. */
+    val anchor: String = ""
+) {
+    internal val savedPlace: SavedPlace get() = SavedPlace(position, anchor, sentenceCount)
+}
 
 class SettingsRepository(private val context: Context) {
     private object Keys {
         val LAST_URL = stringPreferencesKey("last_url")
         val LAST_SENTENCE_INDEX = intPreferencesKey("last_sentence_index")
+        val LAST_SPOKEN_AT = longPreferencesKey("last_spoken_at")
         val HOME_URL = stringPreferencesKey("home_url")
         val HISTORY = stringPreferencesKey("history")
         val BOOKMARKS = stringPreferencesKey("bookmarks")
@@ -162,7 +168,8 @@ class SettingsRepository(private val context: Context) {
             // only knows the URL, so carry the old counts until the page is
             // extracted again and updateReadingPosition refreshes them.
             sentenceCount = old?.sentenceCount ?: page.sentenceCount,
-            remainingMs = old?.remainingMs ?: page.remainingMs
+            remainingMs = old?.remainingMs ?: page.remainingMs,
+            anchor = old?.anchor ?: page.anchor
         )
         val rest = existing.filter { normalizeUrlForCompare(it.url) != key }
         prefs[Keys.HISTORY] = encodePages((listOf(merged) + rest).take(HISTORY_LIMIT))
@@ -182,14 +189,18 @@ class SettingsRepository(private val context: Context) {
      *  [sentenceCount] and [remainingMs] come along for the ride so the library's
      *  "Continue listening" shelf can show progress for a page that isn't
      *  loaded; both are ignored when 0 (nothing extracted yet) rather than
-     *  overwriting good values with zeroes. */
+     *  overwriting good values with zeroes. [spokenAt] goes in the same edit: see
+     *  [lastSpokenAt]. */
     suspend fun updateReadingPosition(
         url: String,
         index: Int,
         sentenceCount: Int = 0,
-        remainingMs: Long = 0L
+        remainingMs: Long = 0L,
+        anchor: String = "",
+        spokenAt: Long = 0L
     ) = context.dataStore.edit { prefs ->
         prefs[Keys.LAST_SENTENCE_INDEX] = index
+        if (spokenAt > 0L) prefs[Keys.LAST_SPOKEN_AT] = spokenAt
         val key = normalizeUrlForCompare(url)
         val current = decodePages(prefs[Keys.HISTORY])
         if (current.any { normalizeUrlForCompare(it.url) == key }) {
@@ -197,6 +208,7 @@ class SettingsRepository(private val context: Context) {
                 if (normalizeUrlForCompare(it.url) == key) {
                     it.copy(
                         position = index,
+                        anchor = anchor,
                         sentenceCount = if (sentenceCount > 0) sentenceCount else it.sentenceCount,
                         remainingMs = if (sentenceCount > 0) remainingMs else it.remainingMs
                     )
@@ -212,16 +224,21 @@ class SettingsRepository(private val context: Context) {
      *  playback service to resume a page with no ViewModel around — the global
      *  index alone isn't safe for that, because navigating to another page
      *  rewrites it for the new page. */
-    suspend fun savedPositionFor(url: String): Int {
+    internal suspend fun savedPlaceFor(url: String): SavedPlace {
         val prefs = context.dataStore.data.first()
         val key = normalizeUrlForCompare(url)
         decodePages(prefs[Keys.HISTORY]).firstOrNull { normalizeUrlForCompare(it.url) == key }
-            ?.let { return it.position }
+            ?.let { return it.savedPlace }
         val last = prefs[Keys.LAST_URL]
         return if (last != null && normalizeUrlForCompare(last) == key) {
-            prefs[Keys.LAST_SENTENCE_INDEX] ?: 0
-        } else 0
+            SavedPlace(prefs[Keys.LAST_SENTENCE_INDEX] ?: 0)
+        } else SavedPlace(0)
     }
+
+    /** When something was last read aloud, or 0 if never. A fresh process needs it
+     *  to know how long the break was (see PlaybackDataRepository.lastSpokenAtMs).
+     *  Not in backups: on another phone or after a restore it means nothing. */
+    suspend fun lastSpokenAt(): Long = context.dataStore.data.first()[Keys.LAST_SPOKEN_AT] ?: 0L
 
     // -- Backup ---------------------------------------------------------------
 

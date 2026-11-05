@@ -112,6 +112,7 @@ internal fun pageToJson(page: WebPage): JSONObject =
         .put("position", page.position)
         .put("total", page.sentenceCount)
         .put("remainingMs", page.remainingMs)
+        .put("anchor", page.anchor)
 
 /** Null for an entry with no usable URL, so one bad row can't sink the list. */
 internal fun pageFromJson(o: JSONObject): WebPage? {
@@ -121,7 +122,8 @@ internal fun pageFromJson(o: JSONObject): WebPage? {
         title = o.optString("title", url).ifBlank { url },
         position = o.optInt("position", 0).coerceAtLeast(0),
         sentenceCount = o.optInt("total", 0).coerceAtLeast(0),
-        remainingMs = o.optLong("remainingMs", 0L).coerceAtLeast(0L)
+        remainingMs = o.optLong("remainingMs", 0L).coerceAtLeast(0L),
+        anchor = o.optString("anchor", "").take(ANCHOR_LENGTH)
     )
 }
 

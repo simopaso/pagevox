@@ -76,6 +76,61 @@ internal class PageNarration(
 
 private val WHITESPACE_RUN = Regex("""\s+""")
 
+// What follows the article proper, in the app's languages. Single words like
+// "Notes" are safe here because a heading only counts at the very end of a page:
+// see [withoutEndMatter].
+private val END_MATTER_HEADINGS = setOf(
+    "see also", "notes", "note", "footnotes", "references", "reference", "citations",
+    "sources", "works cited", "bibliography", "further reading", "external links",
+    "notes and references", "references and notes",
+    "katso myös", "lähteet", "lähde", "viitteet", "lähdeviitteet", "alaviitteet",
+    "huomautukset", "kirjallisuutta", "kirjallisuus", "aiheesta muualla",
+    "se även", "referenser", "källor", "källförteckning", "noter", "fotnoter",
+    "litteratur", "vidare läsning", "externa länkar",
+    "siehe auch", "einzelnachweise", "anmerkungen", "fußnoten", "belege", "quellen",
+    "literatur", "weiterführende literatur", "weblinks",
+    "voir aussi", "annexes", "articles connexes", "notes et références", "références",
+    "sources et références", "bibliographie", "lectures complémentaires",
+    "pour approfondir", "liens externes"
+)
+
+// Wikipedia's desktop skin has the edit link inside the heading: "See also[edit]".
+private val HEADING_EDIT_LINK = Regex("""\[[^\]]*]\s*$""")
+
+private fun PageBlock.isEndMatterHeading(): Boolean =
+    text.replace(WHITESPACE_RUN, " ").replace(HEADING_EDIT_LINK, "").trim().trimEnd(':').trim()
+        .lowercase() in END_MATTER_HEADINGS
+
+/**
+ * [blocks] up to where the article ends and its "See also" and "References" begin,
+ * so that reading finishes with the article and time-left counts only the article.
+ * Only the last stretch of the page counts: every heading from there on has to be
+ * end matter too, or a subsection of one. "Notes" in the middle of an article, or
+ * followed by another chapter, is part of the article. A page with next to nothing
+ * before such a heading is left whole, since that list is what the page is for.
+ */
+internal fun withoutEndMatter(blocks: List<PageBlock>): List<PageBlock> {
+    var start = -1
+    var level = 0
+    for ((i, block) in blocks.withIndex()) {
+        if (!block.isHeading) continue
+        val blockLevel = block.tag[1] - '0'
+        when {
+            block.isEndMatterHeading() -> {
+                if (start < 0) start = i
+                if (level == 0 || blockLevel < level) level = blockLevel
+            }
+            start >= 0 && blockLevel > level -> Unit   // a subsection of end matter
+            else -> { start = -1; level = 0 }
+        }
+    }
+    if (start < 0) return blocks
+    val article = blocks.subList(0, start)
+    return if (article.count { !it.isHeading } < MIN_ARTICLE_BLOCKS) blocks else article
+}
+
+private const val MIN_ARTICLE_BLOCKS = 2
+
 /**
  * Turn extracted page [blocks] into the sentence set the app reads. Each block is
  * cleaned for narration, split into sentences on the *cleaned* text — so a
@@ -89,7 +144,7 @@ internal fun buildNarration(blocks: List<PageBlock>, language: String? = null): 
     val sectionStarts = mutableListOf<Int>()
     val sectionTitles = mutableListOf<String>()
 
-    for (block in blocks) {
+    for (block in withoutEndMatter(blocks)) {
         // innerText keeps the newlines the browser inserts for <br> and inner
         // block boundaries. Collapse all whitespace runs to a single space first,
         // otherwise those embedded newlines survive inside a sentence and the TTS

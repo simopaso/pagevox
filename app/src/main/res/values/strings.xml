@@ -128,4 +128,5 @@
     <string name="download_confirm">Download %1$s?</string>
     <string name="download_action">Download</string>
     <string name="download_failed">This file can\'t be downloaded</string>
+    <string name="page_keeps_crashing">This page keeps crashing</string>
 </resources>

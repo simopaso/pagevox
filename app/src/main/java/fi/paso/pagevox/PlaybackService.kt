@@ -683,7 +683,25 @@ class PlaybackService : MediaSessionService() {
         ensureSilentPlayer()
         startCallWatch()
         if (!isTtsReady) return   // the TTS init callback resumes the voice
-        if (currentUtteranceId == null) speakNextSentence()
+        if (currentUtteranceId == null) {
+            val resumeAt = rewoundAfterBreak(currentSentenceIndex)
+            if (resumeAt != currentSentenceIndex) {
+                currentSentenceIndex = resumeAt
+                player.seekTo(PlaybackDataRepository.getSentenceStartMs(resumeAt))
+            }
+            speakNextSentence()
+        }
+    }
+
+    /** [index], or a little before it if the voice has been silent for a while.
+     *  Starts the clock again, so one break can only be rewound for once: a call
+     *  that goes through startPlayback reaches resumePlayback straight after. */
+    private fun rewoundAfterBreak(index: Int): Int {
+        val lastSpoken = PlaybackDataRepository.lastSpokenAtMs
+        val now = System.currentTimeMillis()
+        PlaybackDataRepository.lastSpokenAtMs = now
+        if (lastSpoken <= 0L) return index
+        return rewindAfterBreak(index, now - lastSpoken, PlaybackDataRepository.sectionStarts)
     }
 
     private fun pausePlayback() {
@@ -775,13 +793,17 @@ class PlaybackService : MediaSessionService() {
         // (or is about to be) destroyed, so it must be updated even when there's
         // no pageUrl to write to disk against.
         PlaybackDataRepository.currentIndex = currentSentenceIndex
+        val spokenAt = System.currentTimeMillis()
+        PlaybackDataRepository.lastSpokenAtMs = spokenAt
         val url = PlaybackDataRepository.pageUrl ?: return
         // Carried along so the library can show progress and time-left for this
         // page later, without loading and re-extracting it.
         val total = PlaybackDataRepository.sentences.size
         val remainingMs = PlaybackDataRepository.baseRemainingMsFrom(currentSentenceIndex)
+        val index = currentSentenceIndex
+        val anchor = PlaybackDataRepository.sentences.getOrNull(index)?.let(::anchorFor).orEmpty()
         serviceScope.launch {
-            settingsRepo.updateReadingPosition(url, currentSentenceIndex, total, remainingMs)
+            settingsRepo.updateReadingPosition(url, index, total, remainingMs, anchor, spokenAt)
         }
     }
 
@@ -793,8 +815,16 @@ class PlaybackService : MediaSessionService() {
      *    fires → resumePlayback() → speakNextSentence().
      *  - player was already playing (playWhenReady=true): onPlayWhenReadyChanged won't
      *    fire again, so we speak the first sentence directly here.
+     *
+     * [isResume] says this is the Play button carrying on from a saved position,
+     * which backs up after a long break. Everything else that lands here is someone
+     * choosing that exact sentence (a tap, the scrubber, a skip) or the next chapter.
      */
-    private fun startPlayback(index: Int) {
+    private fun startPlayback(requested: Int, isResume: Boolean = false) {
+        // Called either way: it also restarts the clock, or the resumePlayback this
+        // leads to would take a tapped sentence for a resume after a long break.
+        val rewound = rewoundAfterBreak(requested)
+        val index = if (isResume) rewound else requested
         if (!isTtsReady) {
             // Defer until the engine finishes initializing.
             pendingStartIndex = index
@@ -1103,7 +1133,7 @@ class PlaybackService : MediaSessionService() {
         // writing ours over it would reopen the app on the wrong page.
         if (PlaybackDataRepository.generation != generation) return false
         // A chapter read before resumes where it stopped; a finished one restarts.
-        val saved = settingsRepo.savedPositionFor(url)
+        val saved = settingsRepo.savedPlaceFor(url).locateIn(narration.display)
         val start = resumeIndexFor(saved, narration.display.size)
         // History first: reading positions are only recorded against pages that
         // have a history entry.
@@ -1148,7 +1178,10 @@ class PlaybackService : MediaSessionService() {
             val prefs = settingsRepo.prefsFlow.first()
             PlaybackDataRepository.speechRate = prefs.speechRate
             PlaybackDataRepository.selectedVoiceName = prefs.selectedVoice.ifBlank { null }
-            val position = settingsRepo.savedPositionFor(snapshot.url)
+            if (PlaybackDataRepository.lastSpokenAtMs == 0L) {
+                PlaybackDataRepository.lastSpokenAtMs = settingsRepo.lastSpokenAt()
+            }
+            val position = settingsRepo.savedPlaceFor(snapshot.url).locateIn(snapshot.sentences)
             PlaybackDataRepository.restore(snapshot, position)
             // It came from disk, so there is nothing to write back.
             snapshotGeneration = PlaybackDataRepository.generation
@@ -1354,7 +1387,9 @@ class PlaybackService : MediaSessionService() {
             args: Bundle
         ): ListenableFuture<SessionResult> {
             when (customCommand.customAction) {
-                "playSentences" -> mainHandler.post { startPlayback(args.getInt("startIndex", 0)) }
+                "playSentences" -> mainHandler.post {
+                    startPlayback(args.getInt("startIndex", 0), isResume = args.getBoolean("resume"))
+                }
                 "stopPlayback"  -> mainHandler.post { stopPlayback() }
                 "skipNext"      -> mainHandler.post { skipSentences(1) }
                 "skipPrevious"  -> mainHandler.post { skipSentences(-1) }

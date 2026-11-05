@@ -109,4 +109,5 @@
     <string name="download_confirm">Ladda ner %1$s?</string>
     <string name="download_action">Ladda ner</string>
     <string name="download_failed">Den här filen kan inte laddas ner</string>
+    <string name="page_keeps_crashing">Den här sidan kraschar gång på gång</string>
 </resources>

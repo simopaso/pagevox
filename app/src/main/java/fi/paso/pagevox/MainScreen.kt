@@ -203,7 +203,10 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     fun togglePlay(freshPage: Boolean = false) {
         val controller = latestController.value ?: return
         if (freshPage) {
-            val args = Bundle().apply { putInt("startIndex", viewModel.getStartIndex()) }
+            val args = Bundle().apply {
+                putInt("startIndex", viewModel.getStartIndex())
+                putBoolean("resume", true)
+            }
             controller.sendCustomCommand(SessionCommand("playSentences", Bundle.EMPTY), args)
             return
         }
@@ -214,7 +217,10 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             // If we need to load new content (e.g. fresh start), send command.
             // Simple heuristic: if we have sentences and player is IDLE, we start fresh.
             if (controller.playbackState == Player.STATE_IDLE && viewModel.sentences.isNotEmpty()) {
-                val args = Bundle().apply { putInt("startIndex", viewModel.getStartIndex()) }
+                val args = Bundle().apply {
+                    putInt("startIndex", viewModel.getStartIndex())
+                    putBoolean("resume", true)
+                }
                 controller.sendCustomCommand(SessionCommand("playSentences", Bundle.EMPTY), args)
             } else {
                 controller.play()
@@ -271,7 +277,9 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             return
         }
         viewModel.isLoading = true
-        extractWhenSettled(view, viewModel.readerMode) { lang, blocks, image, next ->
+        // Stops polling if the WebView is replaced: nothing may call a view whose
+        // renderer has died. See onWebViewGone.
+        extractWhenSettled(view, viewModel.readerMode, isActive = { webView === view }) { lang, blocks, image, next ->
             playStarting = false
             viewModel.isLoading = false
             viewModel.onTextsExtracted(lang, blocks, image, next, onReady)
@@ -338,6 +346,13 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                     url = viewModel.url,
                     currentSentence = viewModel.currentSentenceText,
                     onWebViewReady = { webView = it },
+                    onWebViewGone = {
+                        // Its extraction callback will never come, and a Play press
+                        // waiting on one must not be left waiting.
+                        webView = null
+                        playStarting = false
+                        viewModel.isLoading = false
+                    },
                     onUrlChange = { viewModel.onPageUrlSettled(it) },
                     onTitleChange = { pageUrl, title -> viewModel.onPageTitle(pageUrl, title) },
                     onCanGoBackChanged = { canGoBack = it },

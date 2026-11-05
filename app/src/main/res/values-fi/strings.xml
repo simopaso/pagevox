@@ -109,4 +109,5 @@
     <string name="download_confirm">Ladataanko %1$s?</string>
     <string name="download_action">Lataa</string>
     <string name="download_failed">Tätä tiedostoa ei voi ladata</string>
+    <string name="page_keeps_crashing">Tämä sivu kaatuu toistuvasti</string>
 </resources>
