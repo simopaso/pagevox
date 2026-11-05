@@ -13,7 +13,9 @@
     <!-- Allows the app to run as a foreground service for media playback. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
-    <!-- The application element. -->
+    <!-- The application element. usesCleartextTraffic because this is a browser that
+         registers for http links below: without it every http:// page fails with
+         ERR_CLEARTEXT_NOT_PERMITTED, however it was opened. -->
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -24,6 +26,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PageVox"
+        android:usesCleartextTraffic="true"
         tools:targetApi="34">
         <!-- The main activity of the application. -->
         <!-- Handle the size and orientation changes ourselves rather than being

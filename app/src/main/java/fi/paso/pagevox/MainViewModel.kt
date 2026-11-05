@@ -381,7 +381,7 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
                     result.display,
                     language = lang,
                     pageUrl = url,
-                    startIndex = initialIndex,
+                    startIndex = resumeIndexFor(initialIndex, result.display.size),
                     spokenSentences = result.spoken,
                     sectionStarts = result.sectionStarts,
                     sectionTitles = result.sectionTitles,

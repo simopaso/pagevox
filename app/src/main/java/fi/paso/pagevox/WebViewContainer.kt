@@ -83,6 +83,7 @@ fun WebViewContainer(
     onUrlChange: (String) -> Unit,
     onTitleChange: (String, String) -> Unit,
     onCanGoBackChanged: (Boolean) -> Unit,
+    onNavigationPending: (Boolean) -> Unit,
     onTextTapped: (String) -> Unit,
     forceDark: Boolean,
     textZoom: Int,
@@ -93,6 +94,7 @@ fun WebViewContainer(
     val latestOnUrlChange = rememberUpdatedState(onUrlChange)
     val latestOnTitleChange = rememberUpdatedState(onTitleChange)
     val latestOnCanGoBackChanged = rememberUpdatedState(onCanGoBackChanged)
+    val latestOnNavigationPending = rememberUpdatedState(onNavigationPending)
     val latestOnTextTapped = rememberUpdatedState(onTextTapped)
     val latestReaderMode = rememberUpdatedState(readerMode)
     // The sentence being read and the follow-along toggle, as seen from WebView
@@ -198,7 +200,11 @@ fun WebViewContainer(
                         // ever open them, and a "javascript:void(0)" link — which
                         // is most of the web's buttons — must not be treated as a
                         // request to leave the browser.
-                        "http", "https", "file", "data", "about", "javascript", "blob", null -> false
+                        "http", "https" -> {
+                            if (request.isForMainFrame) latestOnNavigationPending.value(true)
+                            false
+                        }
+                        "file", "data", "about", "javascript", "blob", null -> false
                         else -> openExternally(view, uri)
                     }
                 }
@@ -238,6 +244,7 @@ fun WebViewContainer(
                  */
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
+                    latestOnNavigationPending.value(false)
                     if (url != null && !url.startsWith("data:")) {
                         // Before the callback, as in onPageFinished: the URL
                         // came from the WebView and must not be pushed back in.
@@ -263,6 +270,7 @@ fun WebViewContainer(
                  */
                 override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                     super.doUpdateVisitedHistory(view, url, isReload)
+                    latestOnNavigationPending.value(false)
                     // Back works for in-page navigations too, and onPageFinished
                     // — which used to be the only place this was updated —
                     // never comes for them.
@@ -276,6 +284,7 @@ fun WebViewContainer(
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    latestOnNavigationPending.value(false)
                     latestOnCanGoBackChanged.value(view?.canGoBack() == true)
                     if (url != null && !url.startsWith("data:")) {
                         lastReportedUrl = url
@@ -353,6 +362,10 @@ fun WebViewContainer(
         if (current != null &&
             normalizeUrlForCompare(current) == normalizeUrlForCompare(url)
         ) return@LaunchedEffect
+        // getUrl() reports the new address from here on, but the old document
+        // stays in place until the navigation commits (onPageStarted): text read
+        // from it now would be the previous page's, under this page's address.
+        latestOnNavigationPending.value(true)
         webView.loadUrl(url)
     }
 

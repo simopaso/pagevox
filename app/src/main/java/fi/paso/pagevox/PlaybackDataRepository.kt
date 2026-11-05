@@ -1,6 +1,15 @@
 package fi.paso.pagevox
 
 /**
+ * Where to start a page with a saved position of [saved]. A page read to its last
+ * sentence starts over: resuming there would say one line and move straight on,
+ * into the next chapter if there is one, so a finished page could never be heard
+ * again. Also covers a saved position past the end of a page that has since changed.
+ */
+internal fun resumeIndexFor(saved: Int, sentenceCount: Int): Int =
+    if (saved < 0 || saved >= sentenceCount - 1) 0 else saved
+
+/**
  * Singleton holding the sentence list plus an estimated reading duration per
  * sentence. The duration estimates drive the silent ExoPlayer track so the
  * media-notification progress bar reflects how far through the page the TTS is.

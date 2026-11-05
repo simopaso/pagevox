@@ -1,5 +1,8 @@
 package fi.paso.pagevox
 
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.webkit.WebView
 import org.json.JSONObject
@@ -21,7 +24,20 @@ internal fun extractTextJs(readerMode: Boolean) = """
     var reader = $readerMode;
     var root = null;
     if (reader) {
-        root = document.querySelector('article, main, [role=main]');
+        // The one article holding most of the page's text, when there is one.
+        // querySelector('article, main') returns whichever comes first in the
+        // document, and a main wrapping the article comes first: everything
+        // around the story was read along with it. A page of many small articles
+        // (a front page) has no such article, and falls through to main.
+        var arts = document.querySelectorAll('article'), topArt = null, topLen = 0, allLen = 0;
+        var paras = document.querySelectorAll('p');
+        for (var q = 0; q < paras.length; q++) allLen += (paras[q].innerText || '').length;
+        for (var a0 = 0; a0 < arts.length; a0++) {
+            var aps = arts[a0].querySelectorAll('p'), aLen = 0;
+            for (var q2 = 0; q2 < aps.length; q2++) aLen += (aps[q2].innerText || '').length;
+            if (aLen > topLen) { topLen = aLen; topArt = arts[a0]; }
+        }
+        root = (topArt && topLen >= allLen * 0.6) ? topArt : document.querySelector('main, [role=main], article');
         if (!root) {
             var best = null, bestLen = 0;
             var conts = document.querySelectorAll('div, section, article, main');
@@ -297,6 +313,76 @@ internal val CLEAR_HIGHLIGHT_JS = """
 data class PageBlock(val text: String, val tag: String) {
     /** h1–h6 — the blocks that open a new section of the page. */
     val isHeading: Boolean get() = tag.length == 2 && tag[0] == 'h' && tag[1] in '1'..'6'
+}
+
+// How often an unsettled page is re-read, and how long to keep trying before
+// taking whatever is there.
+private const val SETTLE_POLL_MS = 350L
+private const val SETTLE_TIMEOUT_MS = 10_000L
+// A loaded page with no text at all stops being worth waiting for much sooner.
+private const val EMPTY_PAGE_TIMEOUT_MS = 3_000L
+// A page this young may still be setting itself up: script-built pages keep
+// rewriting their text just after load, without the text having "changed" between
+// two quick readings. A page that has been open a while answers straight away.
+private const val MIN_PAGE_AGE_MS = 1_500.0
+// A page still loading (progress below 100, often only ads and trackers) counts
+// as settled once this many readings in a row agree and it holds real text.
+private const val UNFINISHED_PAGE_READINGS = 5
+private const val UNFINISHED_PAGE_MIN_CHARS = 500
+
+/**
+ * Extract the page once its text has stopped changing, re-reading it until two
+ * readings agree.
+ *
+ * A single reading isn't safe: onPageFinished can fire at 32% loaded, and pages
+ * stream and rewrite themselves after that. Reading too early got a handful of
+ * fragments, which were then read aloud in place of the page, and even a complete
+ * page changes its sentence numbers while it sets itself up, which is what saved
+ * reading positions are counted in. Always calls back, at the latest after
+ * [SETTLE_TIMEOUT_MS], with whatever the last reading found, unless [isActive]
+ * has gone false, which is how a caller that may destroy the WebView opts out.
+ *
+ * Re-reads through its own Handler rather than webView.postDelayed: a view that
+ * isn't attached to a window, as the playback service's isn't, queues posted work
+ * until it is attached, which would be never.
+ */
+internal fun extractWhenSettled(
+    webView: WebView,
+    readerMode: Boolean,
+    isActive: () -> Boolean = { true },
+    onResult: (lang: String?, blocks: List<PageBlock>, imageUrl: String?, nextUrl: String?) -> Unit
+) {
+    val handler = Handler(Looper.getMainLooper())
+    val startedAt = SystemClock.uptimeMillis()
+    var lastChars = -1
+    var agreeing = 0
+    fun read() {
+        if (!isActive()) return
+        extractTexts(webView, readerMode) { lang, blocks, image, next ->
+            if (!isActive()) return@extractTexts
+            webView.evaluateJavascript("performance.now()") { age ->
+                if (!isActive()) return@evaluateJavascript
+                val chars = blocks.sumOf { it.text.length }
+                agreeing = if (chars > 0 && chars == lastChars) agreeing + 1 else 0
+                lastChars = chars
+                val elapsed = SystemClock.uptimeMillis() - startedAt
+                val mature = (age?.toDoubleOrNull() ?: Double.MAX_VALUE) >= MIN_PAGE_AGE_MS
+                val settled = when {
+                    elapsed >= SETTLE_TIMEOUT_MS -> true
+                    webView.progress >= 100 ->
+                        (agreeing >= 1 && mature) || (chars == 0 && elapsed >= EMPTY_PAGE_TIMEOUT_MS)
+                    else -> agreeing >= UNFINISHED_PAGE_READINGS - 1 && chars >= UNFINISHED_PAGE_MIN_CHARS
+                }
+                if (settled) {
+                    Log.d(TAG, "Extracted ${blocks.size} blocks, $chars chars, after ${elapsed}ms")
+                    onResult(lang, blocks, image, next)
+                } else {
+                    handler.postDelayed({ read() }, SETTLE_POLL_MS)
+                }
+            }
+        }
+    }
+    read()
 }
 
 internal fun extractTexts(

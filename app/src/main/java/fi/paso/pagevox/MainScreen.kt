@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.webkit.WebView
 import android.widget.Toast
@@ -63,6 +64,11 @@ private val WIDE_LAYOUT_MIN_WIDTH = 600.dp
 // the rail costs the page far less than the bottom bar costs it in height.
 private val RAIL_WIDTH = 72.dp
 
+// How long Play waits for a page on its way before acting on what's there.
+private const val NAVIGATION_WAIT_MS = 15_000L
+private const val NAVIGATION_POLL_MS = 150L
+private const val ADDRESS_SETTLE_MS = 450L
+
 @Composable
 fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     var webView: WebView? by remember { mutableStateOf(null) }
@@ -72,6 +78,15 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     var showClearSiteData by remember { mutableStateOf(false) }
     var showLibrary by remember { mutableStateOf(false) }
     var showContents by remember { mutableStateOf(false) }
+    // When a navigation was asked for, while its page hasn't replaced the old one.
+    // A time and not a flag, because some never finish: a link that turns out to
+    // be a download commits nothing, and must not leave taps ignored for good.
+    var navigationPendingSince by remember { mutableStateOf<Long?>(null) }
+    fun navigationPending() = navigationPendingSince?.let {
+        SystemClock.uptimeMillis() - it < NAVIGATION_WAIT_MS
+    } == true
+    // A Play press is waiting for the page; further presses add nothing.
+    var playStarting by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var showExitConfirm by remember { mutableStateOf(false) }
     val activity = LocalActivity.current
@@ -155,10 +170,24 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     // only covers Player.Listener events, not MediaController.Listener callbacks).
     DisposableEffect(controller) {
         val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            // What the user has asked for, not what is audible this instant: the
+            // player is briefly "not playing" while it buffers, which showed Play
+            // right after a press and made the next press a no-op. Likewise
+            // during the gap while the next chapter is fetched.
+            private fun update() {
+                isPlaying = controller?.let {
+                    it.playWhenReady && it.playbackState != Player.STATE_IDLE &&
+                        it.playbackState != Player.STATE_ENDED
+                } == true
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = update()
+            override fun onPlaybackStateChanged(playbackState: Int) = update()
         }
         controller?.addListener(listener)
-        if (controller != null) isPlaying = controller.isPlaying
+        if (controller != null) {
+            isPlaying = controller.playWhenReady && controller.playbackState != Player.STATE_IDLE &&
+                controller.playbackState != Player.STATE_ENDED
+        }
         onDispose { controller?.removeListener(listener) }
     }
 
@@ -231,24 +260,43 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
     }
 
     /**
-     * Extract the shown page's text and hand it to the ViewModel, then [onReady].
-     * A press that comes before the page has rendered any text at all used to
-     * do nothing; while the page is still loading, try again shortly instead —
-     * for up to five seconds, and only while the WebView is still on the same
-     * page, so a retry can't start a page the user has since left.
+     * Extract the shown page's text once it has settled, hand it to the ViewModel,
+     * then [onReady]. See [extractWhenSettled].
      */
-    fun extractShownPage(onReady: () -> Unit, attempt: Int = 0) {
-        val view = webView ?: return
-        val forUrl = view.url
-        extractTexts(view, viewModel.readerMode) { lang, blocks, image, next ->
-            val nothingYet = blocks.none { it.text.isNotBlank() }
-            if (nothingYet && view.progress < 100 && attempt < 10) {
-                view.postDelayed({
-                    if (view.url == forUrl) extractShownPage(onReady, attempt + 1)
-                }, 500)
-            } else {
-                viewModel.onTextsExtracted(lang, blocks, image, next, onReady)
-            }
+    fun extractShownPage(onReady: () -> Unit) {
+        val view = webView
+        if (view == null) {
+            playStarting = false
+            viewModel.isLoading = false
+            return
+        }
+        viewModel.isLoading = true
+        extractWhenSettled(view, viewModel.readerMode) { lang, blocks, image, next ->
+            playStarting = false
+            viewModel.isLoading = false
+            viewModel.onTextsExtracted(lang, blocks, image, next, onReady)
+        }
+    }
+
+    /**
+     * Run [action] once any navigation under way has delivered its page. Until it
+     * commits the old document is still in the WebView, so a press in that gap
+     * read the previous page's text and filed it, and its reading position, under
+     * the new address; or, after a tapped link, restarted the old page only for
+     * the arriving page to stop it again. The address check covers the moment
+     * before a navigation has been reported as pending.
+     */
+    fun whenPageReady(action: () -> Unit, waitedMs: Long = 0) {
+        val view = webView
+        val addressDiffers = view?.url?.let {
+            normalizeUrlForCompare(it) != normalizeUrlForCompare(viewModel.url)
+        } == true
+        val keepWaiting = navigationPending() || (addressDiffers && waitedMs < ADDRESS_SETTLE_MS)
+        if (view == null || !keepWaiting) {
+            navigationPendingSince = null
+            action()
+        } else {
+            view.postDelayed({ whenPageReady(action, waitedMs + NAVIGATION_POLL_MS) }, NAVIGATION_POLL_MS)
         }
     }
 
@@ -293,7 +341,10 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                     onUrlChange = { viewModel.onPageUrlSettled(it) },
                     onTitleChange = { pageUrl, title -> viewModel.onPageTitle(pageUrl, title) },
                     onCanGoBackChanged = { canGoBack = it },
+                    onNavigationPending = { navigationPendingSince = if (it) SystemClock.uptimeMillis() else null },
                     onTextTapped = { clickedText ->
+                        // The tap was on the page that's on its way out.
+                        if (navigationPending()) return@WebViewContainer
                         val seekAndPlay = {
                             // A tap that can't be matched to a sentence must NOT
                             // fall back to sentence 0 — that would jump reading to
@@ -373,8 +424,14 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             textZoom = viewModel.textZoom,
             canGoBack = canGoBack,
             canGoUp = parentUrl != null,
-            onBack = { webView?.goBack() },
-            onForward = { webView?.goForward() },
+            onBack = {
+                if (webView?.canGoBack() == true) navigationPendingSince = SystemClock.uptimeMillis()
+                webView?.goBack()
+            },
+            onForward = {
+                if (webView?.canGoForward() == true) navigationPendingSince = SystemClock.uptimeMillis()
+                webView?.goForward()
+            },
             onUp = { parentUrl?.let { viewModel.loadUrl(it) } },
             onHome = { viewModel.loadUrl(viewModel.homeUrl) },
             onOpenManual = { viewModel.loadUrl(manualUrl()) },
@@ -385,11 +442,21 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                 // While something plays the button shows Pause, and pausing is
                 // what it does — whatever page is showing. Otherwise act on the
                 // page actually on screen.
-                if (!isPlaying) syncToShownPage()
-                if (viewModel.sentences.isEmpty()) {
-                    extractShownPage({ togglePlay(freshPage = true) })
-                } else {
+                if (isPlaying) {
                     togglePlay()
+                } else if (!playStarting) {
+                    playStarting = true
+                    viewModel.isLoading = true
+                    whenPageReady({
+                        syncToShownPage()
+                        if (viewModel.sentences.isEmpty()) {
+                            extractShownPage({ togglePlay(freshPage = true) })
+                        } else {
+                            playStarting = false
+                            viewModel.isLoading = false
+                            togglePlay()
+                        }
+                    })
                 }
             },
             onSkipPrevious = {

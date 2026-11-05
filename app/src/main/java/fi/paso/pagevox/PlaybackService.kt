@@ -14,7 +14,12 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
+import android.view.View
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.annotation.OptIn
@@ -90,6 +95,10 @@ private const val FALLBACK_ARTWORK_PX = 512
 // How long the service waits for a next web chapter to load and yield text
 // before giving up and ending playback as it would have without continuation.
 private const val CHAPTER_LOAD_TIMEOUT_MS = 45_000L
+// Servers fail briefly and often enough for a retry to be worth a pause in the
+// reading, rather than the whole book stopping at one bad response.
+private const val CHAPTER_LOAD_ATTEMPTS = 3
+private const val CHAPTER_RETRY_DELAY_MS = 2_000L
 
 // The skips TtsSeekingPlayer handles itself (see there).
 private val SKIP_COMMANDS = intArrayOf(
@@ -169,9 +178,11 @@ class PlaybackService : MediaSessionService() {
     // user does in the meantime (see startPlayback / stopPlayback).
     private var advanceJob: Job? = null
     // The utterance id of the sentence being spoken now, or null while nothing
-    // should be (paused, stopped). Progress callbacks for any other utterance are
-    // ignored. Defensive: the platform contract says a stopped utterance gets
-    // onStop, not onDone, but callbacks arrive asynchronously on another thread,
+    // should be (paused, stopped). Whether a sentence is under way is read from
+    // this, never from tts.isSpeaking — see resumePlayback. Progress callbacks for
+    // any other utterance are ignored. Defensive: the platform contract says a
+    // stopped utterance gets onStop, not onDone, but callbacks arrive
+    // asynchronously on another thread,
     // and an unmatched onDone landing after a skip or a pause would advance the
     // index past a sentence that was never finished. Not seen in practice — a
     // suspected case turned out to be a short sentence ending before the skip.
@@ -637,8 +648,18 @@ class PlaybackService : MediaSessionService() {
 
     /**
      * Called when the system/lock-screen resumes playback (playWhenReady → true).
-     * Only speaks if TTS is idle; avoids double-speaking when startPlayback() already
-     * queued an utterance.
+     * Speaks unless one of our sentences is already under way, which avoids
+     * double-speaking when startPlayback() already queued an utterance.
+     *
+     * That check must be our own [currentUtteranceId], not tts.isSpeaking. The
+     * latter asks whether the whole engine is busy, and loading a voice counts:
+     * applyContentLanguage has just reconfigured the engine whenever a page's
+     * language differs from the last page's, so on those pages the engine said
+     * "busy", no sentence was queued, and nothing ever retried. The silent track
+     * ran on with the button showing Pause and no voice, until a pause and a
+     * second Play. It was a race, so only some pages showed it, and text files
+     * never did: they declare no language, so the engine is left alone. It also
+     * answers for every app using the engine, not just this one.
      */
     private fun resumePlayback() {
         // The page was replaced while the player sat paused on the old one —
@@ -662,7 +683,7 @@ class PlaybackService : MediaSessionService() {
         ensureSilentPlayer()
         startCallWatch()
         if (!isTtsReady) return   // the TTS init callback resumes the voice
-        if (!tts.isSpeaking) speakNextSentence()
+        if (currentUtteranceId == null) speakNextSentence()
     }
 
     private fun pausePlayback() {
@@ -840,13 +861,22 @@ class PlaybackService : MediaSessionService() {
                 val queueMode = if (opensSection) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH
                 val id = UUID.randomUUID().toString()
                 currentUtteranceId = id
-                tts.speak(sentence, queueMode, null, id)
+                // ERROR comes back as a value, not an exception, and with no
+                // progress callback to follow: unchecked, the silent track would
+                // play on with no voice, showing Pause. Pausing shows the truth.
+                if (tts.speak(sentence, queueMode, null, id) == TextToSpeech.ERROR) {
+                    Log.e(TAG, "tts.speak() returned ERROR")
+                    currentUtteranceId = null
+                    player.playWhenReady = false
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "tts.speak() failed", e)
+                currentUtteranceId = null
                 player.playWhenReady = false
             }
         } else {
             Log.d(TAG, "End of sentences")
+            currentUtteranceId = null
             onPageFinished()
         }
     }
@@ -962,46 +992,97 @@ class PlaybackService : MediaSessionService() {
 
     /**
      * Load [url] in a WebView that is never shown and run the extraction script
-     * on it. Null on a timeout or a page that yields no text. The WebView shares
-     * the app's cookies (CookieManager is process-wide), so chapters behind a
-     * login made in the app load too. Server-rendered pages have their text at
-     * onPageFinished; client-rendered ones may fill in a moment later, hence
-     * the short retry. Always destroyed afterwards — it is a whole renderer.
+     * on it, once the page has settled. Null on a timeout, or when every attempt
+     * failed or found no text. The WebView shares the app's cookies (CookieManager
+     * is process-wide), so chapters behind a login made in the app load too.
      */
     private suspend fun extractInBackground(url: String, readerMode: Boolean): ExtractedPage? =
         withTimeoutOrNull(CHAPTER_LOAD_TIMEOUT_MS) {
-            val view = WebView(this@PlaybackService)
-            try {
-                view.settings.javaScriptEnabled = true
-                view.settings.domStorageEnabled = true
-                CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
-                val loaded = CompletableDeferred<Unit>()
-                view.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(v: WebView?, u: String?) {
+            repeat(CHAPTER_LOAD_ATTEMPTS) { attempt ->
+                if (attempt > 0) delay(CHAPTER_RETRY_DELAY_MS)
+                loadAndExtract(url, readerMode)?.let { return@withTimeoutOrNull it }
+                Log.w(TAG, "Next chapter attempt ${attempt + 1} failed")
+            }
+            null
+        }
+
+    /**
+     * One attempt. A failed load must count as a failure: a WebView that gets a 502
+     * or no network still "finishes" loading its error page, and that page's text
+     * would have been read aloud as the next chapter. Given a real viewport because
+     * pages decide what to render from its size, and a page laid out differently
+     * from the one on screen would number its sentences differently. Always
+     * destroyed afterwards: it is a whole renderer.
+     */
+    private suspend fun loadAndExtract(url: String, readerMode: Boolean): ExtractedPage? {
+        val view = WebView(this@PlaybackService)
+        try {
+            view.settings.javaScriptEnabled = true
+            view.settings.domStorageEnabled = true
+            CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
+            val metrics = resources.displayMetrics
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(metrics.widthPixels, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(metrics.heightPixels, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, metrics.widthPixels, metrics.heightPixels)
+            var failed = false
+            val loaded = CompletableDeferred<Unit>()
+            view.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(v: WebView?, u: String?) {
+                    loaded.complete(Unit)
+                }
+
+                override fun onReceivedHttpError(
+                    v: WebView?,
+                    request: WebResourceRequest?,
+                    response: WebResourceResponse?
+                ) {
+                    if (request?.isForMainFrame == true) {
+                        Log.w(TAG, "Next chapter: HTTP ${response?.statusCode}")
+                        failed = true
                         loaded.complete(Unit)
                     }
                 }
-                view.loadUrl(url)
-                loaded.await()
-                repeat(10) {
-                    val page = suspendCancellableCoroutine { cont ->
-                        extractTexts(view, readerMode) { lang, blocks, image, next ->
-                            if (cont.isActive) {
-                                cont.resume(
-                                    ExtractedPage(view.url ?: url, view.title.orEmpty(), lang, blocks, image, next)
-                                )
-                            }
-                        }
+
+                override fun onReceivedError(
+                    v: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    if (request?.isForMainFrame == true) {
+                        Log.w(TAG, "Next chapter: load error ${error?.errorCode}")
+                        failed = true
+                        loaded.complete(Unit)
                     }
-                    if (page.blocks.any { it.text.isNotBlank() }) return@withTimeoutOrNull page
-                    delay(500)
                 }
-                null
-            } finally {
-                view.stopLoading()
-                view.destroy()
+
+                // Nothing unattended gets to open another app.
+                override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean =
+                    request.url?.scheme?.lowercase().let { it != "http" && it != "https" }
+
+                // Without this a renderer crash takes the whole app, and the
+                // reading with it. Missing a chapter is the better outcome.
+                override fun onRenderProcessGone(v: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                    failed = true
+                    loaded.complete(Unit)
+                    return true
+                }
             }
+            view.loadUrl(url)
+            loaded.await()
+            if (failed) return null
+            val page = suspendCancellableCoroutine { cont ->
+                extractWhenSettled(view, readerMode, isActive = { cont.isActive }) { lang, blocks, image, next ->
+                    cont.resume(ExtractedPage(view.url ?: url, view.title.orEmpty(), lang, blocks, image, next))
+                }
+            }
+            return page.takeIf { !failed && it.blocks.any { b -> b.text.isNotBlank() } }
+        } finally {
+            view.stopLoading()
+            view.destroy()
         }
+    }
 
     /**
      * Make [url] the page being read, at its saved position, and keep reading.
@@ -1023,7 +1104,7 @@ class PlaybackService : MediaSessionService() {
         if (PlaybackDataRepository.generation != generation) return false
         // A chapter read before resumes where it stopped; a finished one restarts.
         val saved = settingsRepo.savedPositionFor(url)
-        val start = if (saved >= narration.display.lastIndex) 0 else saved
+        val start = resumeIndexFor(saved, narration.display.size)
         // History first: reading positions are only recorded against pages that
         // have a history entry.
         settingsRepo.addHistory(WebPage(url, title))

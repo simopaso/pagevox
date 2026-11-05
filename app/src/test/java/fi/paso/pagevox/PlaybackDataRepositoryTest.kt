@@ -249,4 +249,14 @@ class PlaybackDataRepositoryTest {
         assertEquals("Body.", PlaybackDataRepository.getSpokenSentence(1))
         assertEquals("Heading", PlaybackDataRepository.sectionTitleAt(2))
     }
+
+    @Test
+    fun aFinishedPageStartsOverInsteadOfResumingOnItsLastLine() {
+        assertEquals(0, resumeIndexFor(224, 225))   // read to the last sentence
+        assertEquals(223, resumeIndexFor(223, 225)) // one to go: a real position
+        assertEquals(0, resumeIndexFor(0, 225))
+        assertEquals(0, resumeIndexFor(500, 225))   // page has since got shorter
+        assertEquals(0, resumeIndexFor(-1, 225))
+        assertEquals(0, resumeIndexFor(0, 1))       // single-sentence page
+    }
 }
