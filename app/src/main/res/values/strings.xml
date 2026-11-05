@@ -125,4 +125,7 @@
     <string name="http_auth_username">Username</string>
     <string name="http_auth_password">Password</string>
     <string name="http_auth_sign_in">Sign in</string>
+    <string name="download_confirm">Download %1$s?</string>
+    <string name="download_action">Download</string>
+    <string name="download_failed">This file can\'t be downloaded</string>
 </resources>

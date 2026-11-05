@@ -1,11 +1,15 @@
 package fi.paso.pagevox
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Message
 import android.util.Log
 import android.view.GestureDetector
@@ -13,12 +17,14 @@ import android.view.MotionEvent
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.HttpAuthHandler
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebViewDatabase
+import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -114,6 +120,7 @@ fun WebViewContainer(
     // Set when a site asks for HTTP Basic/Digest credentials; drives the dialog
     // at the bottom of this composable.
     var authRequest by remember { mutableStateOf<HttpAuthRequest?>(null) }
+    var downloadRequest by remember { mutableStateOf<DownloadRequest?>(null) }
 
     val stateHolder = rememberSaveable(
         saver = Saver<WebViewStateHolder, Bundle>(
@@ -183,6 +190,20 @@ fun WebViewContainer(
                         latestOnTitleChange.value(pageUrl, title)
                     }
                 }
+            }
+            // A link that turns out to be a file never commits a page, so this is also
+            // the end of the navigation it reported: without that, Play and taps
+            // waited out the whole pending limit for a page that was never coming.
+            // Asks first because a page can start a download without any tap at all.
+            setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+                latestOnNavigationPending.value(false)
+                downloadRequest = DownloadRequest(
+                    url = url,
+                    userAgent = userAgent,
+                    mimeType = mimeType,
+                    fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                        .substringAfterLast('/')
+                )
             }
             webViewClient = object : WebViewClient() {
                 /** Anything that isn't a web page belongs to another app: an
@@ -427,6 +448,24 @@ fun WebViewContainer(
 
     AndroidView({ webView }, Modifier.fillMaxSize())
 
+    downloadRequest?.let { request ->
+        AlertDialog(
+            onDismissRequest = { downloadRequest = null },
+            title = { Text(stringResource(R.string.download_confirm, request.fileName)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    downloadRequest = null
+                    startDownload(context, request)
+                }) { Text(stringResource(R.string.download_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { downloadRequest = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     authRequest?.let { request ->
         HttpAuthDialog(
             host = request.host,
@@ -506,6 +545,44 @@ private fun HttpAuthDialog(
  * WebView should stop trying to load it (always — an unhandled scheme renders
  * as an error page, which is worse than nothing).
  */
+private class DownloadRequest(
+    val url: String,
+    val userAgent: String?,
+    val mimeType: String?,
+    val fileName: String
+)
+
+/**
+ * Saves a file to Downloads through the system, which shows its progress and keeps
+ * going after the app is gone. Cookies go along because a file behind a login is
+ * otherwise an error page saved under the file's name. A blob: or data: link exists
+ * only inside the page, so the system can't fetch it. Before Android 10 saving to
+ * shared Downloads takes a storage permission this app doesn't ask for, so older
+ * phones hand the link to another browser.
+ */
+private fun startDownload(context: Context, request: DownloadRequest) {
+    val uri = Uri.parse(request.url)
+    val isWeb = uri.scheme?.lowercase() == "http" || uri.scheme?.lowercase() == "https"
+    if (isWeb && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        openOutsideThisApp(context, request.url)
+        return
+    }
+    runCatching {
+        check(isWeb) { "Not a downloadable address" }
+        val download = DownloadManager.Request(uri)
+            .setTitle(request.fileName)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, request.fileName)
+        request.mimeType?.takeIf { it.isNotBlank() }?.let(download::setMimeType)
+        request.userAgent?.let { download.addRequestHeader("User-Agent", it) }
+        CookieManager.getInstance().getCookie(request.url)?.let { download.addRequestHeader("Cookie", it) }
+        context.getSystemService(DownloadManager::class.java).enqueue(download)
+    }.onFailure {
+        Log.w(TAG, "Download failed to start", it)
+        Toast.makeText(context, R.string.download_failed, Toast.LENGTH_LONG).show()
+    }
+}
+
 private fun openExternally(view: WebView, uri: Uri): Boolean {
     val url = uri.toString()
     val isIntentUrl = uri.scheme.equals("intent", ignoreCase = true)

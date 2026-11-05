@@ -398,6 +398,9 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             onSeekFinished = { idx ->
                 // Commit: start playback from this position (the service
                 // broadcasts updateIndex, which drives the thumb + highlight).
+                // window.find above works by selecting the text it finds, and that
+                // selection would otherwise stay on the page after the thumb is let go.
+                webView?.evaluateJavascript("window.getSelection().removeAllRanges();", null)
                 val args = Bundle().apply { putInt("startIndex", idx) }
                 controller?.sendCustomCommand(
                     SessionCommand("playSentences", Bundle.EMPTY), args
@@ -775,6 +778,9 @@ fun PlaybackControls(
         if (wide) {
             // Room to hand back the actions the phone layout has to hide.
             ControlSeparator()
+            IconButton(onUp, enabled = canGoUp) {
+                Icon(Icons.Default.ArrowUpward, stringResource(R.string.menu_up_one_level))
+            }
             IconButton(onHome) {
                 Icon(Icons.Default.Home, stringResource(R.string.menu_home))
             }
@@ -967,15 +973,15 @@ private fun BottomBarOverflow(
             Icon(Icons.Default.MoreVert, stringResource(R.string.more_options))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_up_one_level)) },
-                enabled = canGoUp,
-                onClick = { onUp(); open = false },
-                leadingIcon = { Icon(Icons.Default.ArrowUpward, contentDescription = null) }
-            )
             // Hidden when the rail already carries them, rather than listed
             // twice: a menu that repeats the buttons next to it reads as clutter.
             if (!promotedInline) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_up_one_level)) },
+                    enabled = canGoUp,
+                    onClick = { onUp(); open = false },
+                    leadingIcon = { Icon(Icons.Default.ArrowUpward, contentDescription = null) }
+                )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.menu_home)) },
                     onClick = { onHome(); open = false },
@@ -986,8 +992,8 @@ private fun BottomBarOverflow(
                     onClick = { onOpenLibrary(); open = false },
                     leadingIcon = { Icon(Icons.Default.Bookmarks, contentDescription = null) }
                 )
+                HorizontalDivider()
             }
-            HorizontalDivider()
             // Text-size stepper. These don't close the menu so zoom can be nudged
             // repeatedly; the current percentage shows between the −/+ buttons.
             Row(
@@ -1094,7 +1100,7 @@ private fun BottomBarOverflow(
  * app — which for a payment page means rendering it in a WebView we control.
  * Excluding our own activity from the chooser keeps that from happening.
  */
-private fun openOutsideThisApp(context: Context, url: String) {
+internal fun openOutsideThisApp(context: Context, url: String) {
     val view = Intent(Intent.ACTION_VIEW, Uri.parse(url))
     val chooser = Intent.createChooser(view, context.getString(R.string.open_with)).apply {
         putExtra(

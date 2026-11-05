@@ -108,4 +108,7 @@
     <string name="http_auth_username">Benutzername</string>
     <string name="http_auth_password">Passwort</string>
     <string name="http_auth_sign_in">Anmelden</string>
+    <string name="download_confirm">%1$s herunterladen?</string>
+    <string name="download_action">Herunterladen</string>
+    <string name="download_failed">Diese Datei kann nicht heruntergeladen werden</string>
 </resources>

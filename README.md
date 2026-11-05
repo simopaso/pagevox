@@ -17,7 +17,8 @@
 - **Resume from your headphones** — press Play on headphones or a car stereo to carry on where you stopped, even hours later after Android has closed the paused app.
 - **Tap to start anywhere** — tap a paragraph to begin reading from that sentence.
 - **Follow-along** — the sentence being read is highlighted on the page and auto-scrolled into view, karaoke style. Toggle it off for audio-only.
-- **Reader mode** — strips navigation, ads, and clutter for distraction-free reading and cleaner narration.
+- **Reads the page, not the site around it** — menus, footers, sidebars, pop-ups and reference lists are skipped, invisible text stays silent, and sections a page has folded away are opened and read.
+- **Reader mode** — goes further: reads only the main article, and strips ads and clutter from the page for distraction-free reading.
 - **Reading-position scrubber** — a full-width scrubber above the controls to jump anywhere in the page, with a live preview of the sentence you'll land on, section marks on the track, and the current heading above it.
 - **Section navigation** — long-press skip to jump a whole section (heading) at a time; headings get a short pause in front of them so they land as chapter breaks.
 - **Natural narration** — citation markers ("[3]"), bare URLs, ASCII rules and unpronounceable abbreviations are cleaned up before they reach the speech engine, while the page text you see and tap stays untouched.
@@ -95,7 +96,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.24**.
+Personal project, actively developed. Current version: **2.25**.
 
 ## Supporting development
 

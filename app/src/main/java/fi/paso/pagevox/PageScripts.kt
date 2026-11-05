@@ -10,18 +10,60 @@ import org.json.JSONTokener
 
 private const val TAG = "PageScripts"
 
+// Never read aloud, in either mode: menus, footers, sidebars, dialogs (the cookie
+// banner, as a rule) and reference lists. On a phone-sized Wikipedia article the
+// footer and navigation alone are nine blocks in ten, and the references are
+// hundreds of citations. <header> stays out of this list because article titles
+// live in it; reader mode, which wants the article only, adds it.
+private const val NOT_READ_SELECTOR =
+    "nav, footer, aside, dialog, [role=navigation], [role=contentinfo], [role=complementary], " +
+        "[role=dialog], [aria-modal=true], .references, .reflist, " +
+        "[role=doc-endnotes], [role=doc-bibliography]"
+
+// Opens what the page has folded away, so that it can be read and followed on
+// screen. Mobile Wikipedia folds every section with hidden="until-found", which
+// keeps the text out of innerText (unlike display:none it does have a layout box,
+// with content-visibility:hidden on it), so only the intro and the headings were
+// read. beforematch is how a page hears that the browser is revealing such an
+// element, and is what keeps its own expand arrows right. Runs when reading starts,
+// not on load, so a page that's only being looked at stays as its author left it.
+private const val REVEAL_COLLAPSED_JS = """
+    (function() {
+        var skip = '$NOT_READ_SELECTOR';
+        var folded = document.querySelectorAll('[hidden="until-found"]');
+        for (var f = 0; f < folded.length; f++) {
+            if (folded[f].closest(skip)) continue;
+            try { folded[f].dispatchEvent(new Event('beforematch', { bubbles: true })); } catch (e) {}
+            folded[f].removeAttribute('hidden');
+        }
+        var closed = document.querySelectorAll('details:not([open])');
+        for (var d = 0; d < closed.length; d++) {
+            if (!closed[d].closest(skip)) closed[d].open = true;
+        }
+    })();
+"""
+
 // Extracts innerText of semantic elements (falls back to body for .txt pages).
 // Returns a JSON object string {lang, texts, tags} via evaluateJavascript, where
 // tags[i] is the lowercased tag name of the element texts[i] came from. The tag
 // is what makes heading-aware navigation possible: h1–h6 blocks become section
 // boundaries for the scrubber's tick marks and long-press section skip.
 //
-// When [readerMode] is on, extraction is scoped to the main article: it picks
-// <article>/<main>/[role=main], or the densest text container, and skips
-// chrome (nav/header/footer/aside) so the TTS doesn't read menus and ads.
+// Two things are never read, reader mode or not: site chrome and citation lists
+// ([NOT_READ_SELECTOR]), and text with no layout box. display:none text has to be
+// left out by hand, because innerText falls back to textContent for an element
+// that isn't rendered: hidden menus and dialogs used to be read aloud, and could
+// never be highlighted. If those rules leave nothing at all, the page is read
+// unfiltered: better too much than a Play button that says nothing, and a page
+// hiding its body until its scripts have run reads as it always did.
+//
+// When [readerMode] is on, extraction is also scoped to the main article: it picks
+// <article>/<main>/[role=main], or the densest text container, and skips the
+// header too, so only the article itself is read.
 internal fun extractTextJs(readerMode: Boolean) = """
 (function() {
     var reader = $readerMode;
+    $REVEAL_COLLAPSED_JS
     var root = null;
     if (reader) {
         // The one article holding most of the page's text, when there is one.
@@ -51,7 +93,7 @@ internal fun extractTextJs(readerMode: Boolean) = """
         }
     }
     root = root || document.body;
-    var skip = 'nav, header, footer, aside, [role=navigation], [role=banner], [role=complementary]';
+    var skip = '$NOT_READ_SELECTOR' + (reader ? ', header, [role=banner]' : '');
     var els = root.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,pre');
     var texts = [], tags = [];
     if (els.length === 0) {
@@ -60,9 +102,14 @@ internal fun extractTextJs(readerMode: Boolean) = """
         if (b) { texts.push(b); tags.push(''); }
     } else {
         for (var i = 0; i < els.length; i++) {
-            if (reader && els[i].closest(skip)) continue;
+            if (els[i].closest(skip) || els[i].getClientRects().length === 0) continue;
             var t = (els[i].innerText || '').trim();
             if (t) { texts.push(t); tags.push(els[i].tagName.toLowerCase()); }
+        }
+        var filteredAway = texts.length === 0;
+        for (var u = 0; filteredAway && u < els.length; u++) {
+            var ut = (els[u].innerText || '').trim();
+            if (ut) { texts.push(ut); tags.push(els[u].tagName.toLowerCase()); }
         }
     }
     // Declared content language: <html lang> first, then a content-language meta.
@@ -228,6 +275,9 @@ internal fun highlightSentenceJs(sentenceJson: String) = """
     var target = sent.replace(/\s+/g, ' ').trim();
     var root = document.body;
     if (!target || !root) return;
+    // A page reloaded under a reading that's already going hasn't been through
+    // extraction: its sentences would be found, but inside a section that can't paint.
+    $REVEAL_COLLAPSED_JS
 
     // Walking every text node is O(page); doing it per sentence made long
     // articles O(n²) and janky. Build the concatenated-text index once, cache

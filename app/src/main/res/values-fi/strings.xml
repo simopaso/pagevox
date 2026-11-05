@@ -106,4 +106,7 @@
     <string name="http_auth_username">Käyttäjätunnus</string>
     <string name="http_auth_password">Salasana</string>
     <string name="http_auth_sign_in">Kirjaudu</string>
+    <string name="download_confirm">Ladataanko %1$s?</string>
+    <string name="download_action">Lataa</string>
+    <string name="download_failed">Tätä tiedostoa ei voi ladata</string>
 </resources>

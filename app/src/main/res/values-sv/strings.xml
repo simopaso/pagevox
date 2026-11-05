@@ -106,4 +106,7 @@
     <string name="http_auth_username">Användarnamn</string>
     <string name="http_auth_password">Lösenord</string>
     <string name="http_auth_sign_in">Logga in</string>
+    <string name="download_confirm">Ladda ner %1$s?</string>
+    <string name="download_action">Ladda ner</string>
+    <string name="download_failed">Den här filen kan inte laddas ner</string>
 </resources>
