@@ -59,6 +59,11 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
 
     private var initialIndex = 0
 
+    /** A page that was left partway through is open, and its text hasn't been read
+     *  from it yet, so the screen can't show where reading stopped. See the place
+     *  preview in MainScreen. */
+    val hasPlaceToShow: Boolean get() = sentences.isEmpty() && initialIndex > 0
+
     // The saved place [initialIndex] came from, kept until the page's sentences
     // exist to look it up in. See onTextsExtracted.
     private var restoredPlace: SavedPlace? = null
@@ -184,6 +189,10 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
             restoredPlace = null
             sentences = PlaybackDataRepository.sentences.toList()
             sectionStarts = PlaybackDataRepository.sectionStarts.toList()
+            // Show the place at once. Left at -1 the scrubber read "1 / N" and
+            // nothing was highlighted until Play was pressed.
+            currentHighlightIndex = initialIndex.coerceIn(0, sentences.lastIndex)
+            currentSentenceText = sentences[currentHighlightIndex]
         } else {
             initialIndex = saved.index
             restoredPlace = saved
@@ -380,10 +389,12 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         blocks: List<PageBlock>,
         imageUrl: String?,
         nextUrl: String?,
-        onReadyToPlay: () -> Unit
+        onReadyToPlay: () -> Unit,
+        // The place preview: nobody pressed anything, so no spinner.
+        quiet: Boolean = false
     ) {
         viewModelScope.launch {
-            isLoading = true
+            if (!quiet) isLoading = true
             val result = withContext(Dispatchers.Default) {
                 buildNarration(blocks, lang).takeIf { it.display.isNotEmpty() }
             }
@@ -400,11 +411,16 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
                 val start = restoredPlace?.takeIf { it.index == initialIndex }
                     ?.locateIn(result.display) ?: initialIndex
                 restoredPlace = null
+                val startAt = resumeIndexFor(start, result.display.size)
+                // Kept, so that reading the same page's text again (a Play press
+                // racing the place preview) starts from the sentence found here
+                // and not from the raw saved number.
+                initialIndex = startAt
                 PlaybackDataRepository.setSentences(
                     result.display,
                     language = lang,
                     pageUrl = url,
-                    startIndex = resumeIndexFor(start, result.display.size),
+                    startIndex = startAt,
                     spokenSentences = result.spoken,
                     sectionStarts = result.sectionStarts,
                     sectionTitles = result.sectionTitles,
@@ -415,9 +431,15 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
                     // chapters); checked again here rather than trusted.
                     nextUrl = acceptNextUrl(url, nextUrl)
                 )
+                // Where reading will start, shown before anything is spoken: the
+                // scrubber, and the highlight, which also scrolls the page there.
+                if (currentHighlightIndex < 0) {
+                    currentHighlightIndex = startAt
+                    currentSentenceText = result.display.getOrElse(startAt) { "" }
+                }
                 onReadyToPlay()
             }
-            isLoading = false
+            if (!quiet) isLoading = false
         }
     }
 

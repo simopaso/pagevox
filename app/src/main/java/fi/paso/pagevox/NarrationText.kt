@@ -155,7 +155,12 @@ internal fun buildNarration(blocks: List<PageBlock>, language: String? = null): 
     val sectionStarts = mutableListOf<Int>()
     val sectionTitles = mutableListOf<String>()
 
-    for (block in withoutEndMatter(blocks)) {
+    // A page that is one block of preformatted text is a text file, or a page built
+    // like one. Its chapter headings are lines in that text: see TextDocument.kt.
+    val textDocument = blocks.singleOrNull()?.takeIf { it.tag == "pre" || it.tag.isEmpty() }
+    val source = textDocument?.let(::textDocumentBlocks) ?: blocks
+
+    for (block in withoutEndMatter(source)) {
         // innerText keeps the newlines the browser inserts for <br> and inner
         // block boundaries. Collapse all whitespace runs to a single space first,
         // otherwise those embedded newlines survive inside a sentence and the TTS

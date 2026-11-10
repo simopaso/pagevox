@@ -21,9 +21,9 @@ android {
         // The target Android API level for the app.
         targetSdk = 36
         // An internal version number for the app.
-        versionCode = 39
+        versionCode = 40
         // A user-facing version number for the app.
-        versionName = "2.27"
+        versionName = "2.28"
 
         // The fully qualified class name of the test instrumentation runner.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.time.LocalDate
 
@@ -68,6 +69,8 @@ private val RAIL_WIDTH = 72.dp
 private const val NAVIGATION_WAIT_MS = 15_000L
 private const val NAVIGATION_POLL_MS = 150L
 private const val ADDRESS_SETTLE_MS = 450L
+// Head start for a navigation to be under way before the place preview looks at it.
+private const val PLACE_PREVIEW_DELAY_MS = 600L
 
 @Composable
 fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
@@ -305,6 +308,36 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             action()
         } else {
             view.postDelayed({ whenPageReady(action, waitedMs + NAVIGATION_POLL_MS) }, NAVIGATION_POLL_MS)
+        }
+    }
+
+    // Show where reading stopped as soon as a page you had started is open, rather
+    // than "1 / N" and no highlight until Play is pressed. A page's text is
+    // otherwise only read from it when Play or a tap asks for it, so this reads it
+    // early, and only for pages with a saved place: a page that's merely being
+    // looked at is left alone (reading it opens its folded sections). The result is
+    // the same as pressing Play and pausing at once, so everything that follows
+    // works as it does then.
+    //
+    // Not while anything is playing: the service reads its sentences out of the
+    // same repository this fills, and a page opened over a read still going (a
+    // shared link, say) must not replace them under it.
+    LaunchedEffect(viewModel.url, webView, viewModel.readerMode) {
+        val view = webView ?: return@LaunchedEffect
+        val pageUrl = viewModel.url
+        if (pageUrl.isEmpty()) return@LaunchedEffect
+        fun shown() = view.url?.let { normalizeUrlForCompare(it) == normalizeUrlForCompare(pageUrl) } == true
+        fun wanted() = webView === view && viewModel.url == pageUrl && viewModel.hasPlaceToShow &&
+            !playStarting && latestController.value?.playWhenReady == false
+        delay(PLACE_PREVIEW_DELAY_MS)
+        var waited = 0L
+        while (waited < NAVIGATION_WAIT_MS && (navigationPending() || view.progress < 100 || !shown())) {
+            delay(NAVIGATION_POLL_MS)
+            waited += NAVIGATION_POLL_MS
+        }
+        if (!shown() || !wanted()) return@LaunchedEffect
+        extractWhenSettled(view, viewModel.readerMode, isActive = { wanted() }) { lang, blocks, image, next ->
+            viewModel.onTextsExtracted(lang, blocks, image, next, {}, quiet = true)
         }
     }
 
