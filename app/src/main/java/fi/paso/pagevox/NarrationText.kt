@@ -108,6 +108,12 @@ private fun PageBlock.isEndMatterHeading(): Boolean =
  * end matter too, or a subsection of one. "Notes" in the middle of an article, or
  * followed by another chapter, is part of the article. A page with next to nothing
  * before such a heading is left whole, since that list is what the page is for.
+ *
+ * The heading's wording isn't enough either. A recipe ends with its "Notes", and
+ * documentation with a "Reference" that is most of the page. What's cut is lists
+ * of links and sources, so the closing stretch has to be list items, or empty
+ * (the citations themselves are already left out by the page script); if more than
+ * a fifth of it is paragraphs, it is something to read.
  */
 internal fun withoutEndMatter(blocks: List<PageBlock>): List<PageBlock> {
     var start = -1
@@ -126,10 +132,15 @@ internal fun withoutEndMatter(blocks: List<PageBlock>): List<PageBlock> {
     }
     if (start < 0) return blocks
     val article = blocks.subList(0, start)
-    return if (article.count { !it.isHeading } < MIN_ARTICLE_BLOCKS) blocks else article
+    if (article.count { !it.isHeading } < MIN_ARTICLE_BLOCKS) return blocks
+    val closing = blocks.subList(start, blocks.size).filter { !it.isHeading }
+    val prose = closing.count { it.tag != "li" }
+    return if (prose * MAX_PROSE_IN_END_MATTER > closing.size) blocks else article
 }
 
 private const val MIN_ARTICLE_BLOCKS = 2
+// One block in this many may be a paragraph in a stretch that is still end matter.
+private const val MAX_PROSE_IN_END_MATTER = 5
 
 /**
  * Turn extracted page [blocks] into the sentence set the app reads. Each block is

@@ -485,6 +485,22 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
             if (hit >= 0) return hit
         }
 
+        // No one sentence holds the probe: the tap was within a few characters of a
+        // sentence's end, or on a very short sentence, so the tapped text runs on
+        // into the next one. Look across the joins, and take the sentence the match
+        // starts in. Lowercased once, so offsets and text stay in step.
+        val joined = StringBuilder()
+        val starts = IntArray(normalizedSentences.size)
+        normalizedSentences.forEachIndexed { i, s ->
+            starts[i] = joined.length
+            joined.append(s.lowercase()).append(' ')
+        }
+        for (probeLen in intArrayOf(48, 30, 18, 10)) {
+            if (clicked.length < probeLen) continue
+            val at = joined.indexOf(clicked.substring(0, probeLen).lowercase())
+            if (at >= 0) return starts.indexOfLast { it <= at }
+        }
+
         // Tap text shorter than the smallest probe (near end of document): match
         // on the whole thing, then on a sentence that starts with it.
         val whole = normalizedSentences.indexOfFirst { it.contains(clicked, ignoreCase = true) }

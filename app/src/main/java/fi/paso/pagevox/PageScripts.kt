@@ -94,7 +94,8 @@ internal fun extractTextJs(readerMode: Boolean) = """
     }
     root = root || document.body;
     var skip = '$NOT_READ_SELECTOR' + (reader ? ', header, [role=banner]' : '');
-    var els = root.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,pre');
+    var blockSel = 'p,h1,h2,h3,h4,h5,h6,li,pre';
+    var els = root.querySelectorAll(blockSel);
     var texts = [], tags = [];
     if (els.length === 0) {
         // Plain-text document: one undifferentiated block, so no headings.
@@ -103,7 +104,17 @@ internal fun extractTextJs(readerMode: Boolean) = """
     } else {
         for (var i = 0; i < els.length; i++) {
             if (els[i].closest(skip) || els[i].getClientRects().length === 0) continue;
-            var t = (els[i].innerText || '').trim();
+            var t;
+            if (els[i].querySelector(blockSel)) {
+                // A block holding other blocks (a list item around a paragraph or a
+                // nested list): those are read in their own turn, so take only the
+                // text that is this block's own, or theirs would be read twice.
+                var own = els[i].cloneNode(true), inner = own.querySelectorAll(blockSel);
+                for (var n0 = 0; n0 < inner.length; n0++) inner[n0].remove();
+                t = (own.textContent || '').trim();
+            } else {
+                t = (els[i].innerText || '').trim();
+            }
             if (t) { texts.push(t); tags.push(els[i].tagName.toLowerCase()); }
         }
         var filteredAway = texts.length === 0;
@@ -286,6 +297,9 @@ internal fun highlightSentenceJs(sentenceJson: String) = """
         var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
         var full = '', map = [], prevSpace = true, node;
         while (node = walker.nextNode()) {
+            // Never on screen, and a page's own data can repeat its text.
+            var parent = node.parentNode ? node.parentNode.nodeName : '';
+            if (parent === 'SCRIPT' || parent === 'STYLE' || parent === 'NOSCRIPT') continue;
             var v = node.nodeValue;
             for (var i = 0; i < v.length; i++) {
                 var c = v[i];
@@ -312,9 +326,23 @@ internal fun highlightSentenceJs(sentenceJson: String) = """
         }
     }
 
+    // A short sentence is rarely the only place its words appear: a heading's word
+    // is in the introduction too, and "Yes." is said all through a chapter. The
+    // first match used to win, so the highlight, and the scrolling with it, jumped
+    // back up the page for that sentence. Reading moves on from the sentence before,
+    // so the match nearest to where that one ended is the right one.
+    function nearest(hay, needle) {
+        var first = hay.indexOf(needle), hint = window.__pagevox_last;
+        if (first < 0 || typeof hint !== 'number') return first;
+        var best = first, i = first;
+        while (i >= 0 && i <= hint) { best = i; i = hay.indexOf(needle, i + 1); }
+        if (i >= 0 && (best > hint || i - hint < hint - best)) best = i;
+        return best;
+    }
+
     function locate(c) {
-        var i = c.full.indexOf(target);
-        return i >= 0 ? i : c.lower.indexOf(target.toLowerCase());
+        var i = nearest(c.full, target);
+        return i >= 0 ? i : nearest(c.lower, target.toLowerCase());
     }
 
     var idx = locate(cache);
@@ -326,6 +354,7 @@ internal fun highlightSentenceJs(sentenceJson: String) = """
     }
     var s = cache.map[idx], e = cache.map[idx + target.length - 1];
     if (!s || !e) return;
+    window.__pagevox_last = idx + target.length;
 
     var range = document.createRange();
     try { range.setStart(s[0], s[1]); range.setEnd(e[0], e[1] + 1); }

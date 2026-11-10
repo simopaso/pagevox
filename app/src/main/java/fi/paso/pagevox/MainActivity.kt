@@ -71,7 +71,12 @@ class MainActivity : ComponentActivity() {
      *  into the browser. */
     private fun handleShareIntent(intent: Intent?) {
         when (intent?.action) {
-            Intent.ACTION_VIEW -> intent.data?.toString()?.let { mainViewModel.loadUrl(it) }
+            // Web links only. The manifest filter says as much, but before
+            // Android 13 another app can send this activity a VIEW intent that
+            // doesn't match it, with any address it likes.
+            Intent.ACTION_VIEW -> intent.data
+                ?.takeIf { it.scheme.equals("http", true) || it.scheme.equals("https", true) }
+                ?.toString()?.let { mainViewModel.loadUrl(it) }
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let { mainViewModel.loadSharedText(it) }
         }
     }

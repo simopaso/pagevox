@@ -54,13 +54,31 @@ internal fun splitIntoSentenceRanges(text: String): List<IntRange> {
     return ranges
 }
 
+// Text with no sentence ends in it (a code listing, a log, a table) comes out as
+// one "sentence" of any length, and the engine refuses anything over
+// TextToSpeech.getMaxSpeechInputLength() (4000): speak() fails, and reading stopped
+// at that block for good. Well under the limit, since narration cleanup can
+// lengthen a piece a little.
+internal const val MAX_SENTENCE_CHARS = 2000
+
 /** Append [from,toExclusive) to [out] with the outer whitespace shaved off,
- *  skipping it entirely when nothing but whitespace remains. */
+ *  skipping it entirely when nothing but whitespace remains. Anything longer than
+ *  [MAX_SENTENCE_CHARS] goes in as several pieces, cut between words. */
 private fun addTrimmed(text: String, from: Int, toExclusive: Int, out: MutableList<IntRange>) {
     var s = from
     var e = toExclusive
     while (s < e && text[s].isWhitespace()) s++
     while (e > s && text[e - 1].isWhitespace()) e--
+    while (e - s > MAX_SENTENCE_CHARS) {
+        var cut = s + MAX_SENTENCE_CHARS
+        while (cut > s && !text[cut].isWhitespace()) cut--
+        if (cut == s) cut = s + MAX_SENTENCE_CHARS   // one unbroken run: cut it anyway
+        var end = cut
+        while (end > s && text[end - 1].isWhitespace()) end--
+        out.add(s until end)
+        s = cut
+        while (s < e && text[s].isWhitespace()) s++
+    }
     if (e > s) out.add(s until e)
 }
 

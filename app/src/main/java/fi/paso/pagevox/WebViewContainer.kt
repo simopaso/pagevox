@@ -116,6 +116,9 @@ fun WebViewContainer(
     var rebuilds by remember { mutableStateOf(0) }
     var lastGoneAt by remember { mutableStateOf(0L) }
     var abandonedUrl by remember { mutableStateOf<String?>(null) }
+    // Given up on for now, not for good: once the user has moved on, coming back
+    // to the page later is a fresh try.
+    LaunchedEffect(url) { if (url != abandonedUrl) abandonedUrl = null }
     key(rebuilds) {
         WebViewPage(
             url = url,
@@ -466,6 +469,9 @@ private fun WebViewPage(
 
     LaunchedEffect(url) {
         if (url.isEmpty() || url.startsWith("data:")) return@LaunchedEffect
+        // Addresses arrive here from outside the app too (a VIEW intent, a restored
+        // backup), and loadUrl runs a javascript: one inside the page that's open.
+        if (url.startsWith("javascript:", ignoreCase = true)) return@LaunchedEffect
         // Don't push a URL the WebView is already at (or a trivial redirect
         // variant of it), and never echo back a URL that originated from
         // onPageFinished — either would re-trigger navigation and can escalate
@@ -707,8 +713,12 @@ private fun openExternally(view: WebView, uri: Uri): Boolean {
     } catch (e: ActivityNotFoundException) {
         // "Open in our app" banners name a web page to fall back to when the app
         // isn't installed.
+        // Web addresses only: the fallback is the page's own text, and this is also
+        // reached from a frame inside the page. A javascript: one would run in the
+        // top page, with that site's cookies.
         val fallback = runCatching { intent.getStringExtra("browser_fallback_url") }.getOrNull()
-        if (!fallback.isNullOrBlank()) view.loadUrl(fallback)
+        val fallbackScheme = fallback?.let { Uri.parse(it).scheme?.lowercase() }
+        if (fallback != null && (fallbackScheme == "http" || fallbackScheme == "https")) view.loadUrl(fallback)
         else Log.d(TAG, "No app can open $url")
         true
     }

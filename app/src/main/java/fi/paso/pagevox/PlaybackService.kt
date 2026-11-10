@@ -857,8 +857,11 @@ class PlaybackService : MediaSessionService() {
         pausedForCall = false
         advanceJob?.cancel()
         advanceJob = null
-        currentSentenceIndex = 0
+        // Pausing first: it runs pausePlayback, which saves the position, and that
+        // has to be the sentence being read. Zeroing the index before it wrote 0
+        // over the page's saved position whenever the user left a page mid-read.
         player.playWhenReady = false
+        currentSentenceIndex = 0
         player.stop()
         player.clearMediaItems()
     }

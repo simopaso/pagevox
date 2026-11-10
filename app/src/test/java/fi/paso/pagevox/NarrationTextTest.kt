@@ -158,13 +158,14 @@ class NarrationTextTest {
 
     private fun p(text: String) = PageBlock(text, "p")
     private fun h(level: Int, text: String) = PageBlock(text, "h$level")
+    private fun li(text: String) = PageBlock(text, "li")
     private val article = listOf(h(1, "Helsinki"), p("First paragraph."), p("Second paragraph."))
 
     @Test
     fun endMatterAfterTheArticleIsNotRead() {
         val blocks = article + listOf(
-            h(2, "See also"), p("A link."), h(2, "Notes"), p("A note."),
-            h(2, "References"), p("A book."), h(2, "External links"), p("A site.")
+            h(2, "See also"), li("A link."), h(2, "Notes"),
+            h(2, "References"), li("A book."), h(2, "External links"), li("A site.")
         )
         assertEquals(article, withoutEndMatter(blocks))
     }
@@ -172,7 +173,7 @@ class NarrationTextTest {
     @Test
     fun aSubsectionOfEndMatterIsEndMatter() {
         val blocks = article + listOf(
-            h(2, "Annexes"), h(3, "Ouvrages"), p("Un livre."), h(3, "Articles connexes"), p("Un lien.")
+            h(2, "Annexes"), h(3, "Ouvrages"), li("Un livre."), h(3, "Articles connexes"), li("Un lien.")
         )
         assertEquals(article, withoutEndMatter(blocks))
     }
@@ -186,7 +187,7 @@ class NarrationTextTest {
     @Test
     fun onlyTheLastStretchIsCut() {
         val kept = article + listOf(h(2, "Notes"), p("Early notes."), h(2, "History"), p("Some history."))
-        assertEquals(kept, withoutEndMatter(kept + listOf(h(2, "References"), p("A book."))))
+        assertEquals(kept, withoutEndMatter(kept + listOf(h(2, "References"), li("A book."))))
     }
 
     @Test
@@ -204,13 +205,30 @@ class NarrationTextTest {
             "Voir aussi", "Notes et références", "See also[edit]", "Lähteet[muokkaa | muokkaa wikitekstiä]",
             "REFERENCES", "References:", "  See   also "
         ).forEach { title ->
-            assertEquals(title, article, withoutEndMatter(article + listOf(h(2, title), p("Text."))))
+            assertEquals(title, article, withoutEndMatter(article + listOf(h(2, title), li("Text."))))
         }
     }
 
     @Test
+    fun aClosingSectionOfProseIsRead() {
+        val recipe = article + listOf(h(2, "Notes"), p("Use ripe tomatoes."), p("It keeps for a week."))
+        assertEquals(recipe, withoutEndMatter(recipe))
+        val docs = article + listOf(
+            h(2, "Reference"), h(3, "open()"), p("Opens a file."), h(3, "close()"), p("Closes it.")
+        )
+        assertEquals(docs, withoutEndMatter(docs))
+    }
+
+    @Test
+    fun aStrayParagraphAmongTheLinksDoesNotSaveThem() {
+        val links = (1..6).map { li("Link $it") }
+        val blocks = article + listOf(h(2, "External links"), p("On other projects:")) + links
+        assertEquals(article, withoutEndMatter(blocks))
+    }
+
+    @Test
     fun narrationEndsWithTheArticleAndDropsItsSectionMarks() {
-        val n = buildNarration(article + listOf(h(2, "References"), p("A book.")))
+        val n = buildNarration(article + listOf(h(2, "References"), li("A book.")))
         assertEquals(listOf("Helsinki", "First paragraph.", "Second paragraph."), n.display)
         assertEquals(listOf("Helsinki"), n.sectionTitles)
     }

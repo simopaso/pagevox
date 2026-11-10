@@ -1,6 +1,7 @@
 package fi.paso.pagevox
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SentenceSplitterTest {
@@ -96,5 +97,26 @@ class SentenceSplitterTest {
     @Test
     fun rangesSkipWhitespaceOnlyPieces() {
         assertEquals(emptyList<IntRange>(), splitIntoSentenceRanges("   "))
+    }
+
+    @Test
+    fun textWithNoSentenceEndsIsCutIntoSpeakablePieces() {
+        val text = (1..1500).joinToString(" ") { "word$it" }
+        val pieces = splitIntoSentences(text)
+        assertTrue(pieces.size > 1)
+        assertTrue(pieces.all { it.length <= MAX_SENTENCE_CHARS })
+        assertEquals(text, pieces.joinToString(" "))
+    }
+
+    @Test
+    fun oneUnbrokenRunIsStillCut() {
+        val pieces = splitIntoSentences("x".repeat(MAX_SENTENCE_CHARS * 2 + 10))
+        assertEquals(listOf(MAX_SENTENCE_CHARS, MAX_SENTENCE_CHARS, 10), pieces.map { it.length })
+    }
+
+    @Test
+    fun anOrdinarySentenceIsLeftWhole() {
+        val long = "This " + "is ".repeat(300) + "long."
+        assertEquals(listOf(long, "Next one."), splitIntoSentences("$long Next one."))
     }
 }
