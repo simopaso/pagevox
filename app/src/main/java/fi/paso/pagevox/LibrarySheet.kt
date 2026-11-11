@@ -1,6 +1,5 @@
 package fi.paso.pagevox
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,7 +26,8 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,7 +62,12 @@ fun LibrarySheet(
     onClearHistory: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Opens straight to full height: the half-open stop would show a list cut off
+    // after a row or two.
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+    )
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         LibraryContent(
             continueListening = continueListening,
@@ -151,14 +156,10 @@ fun LibraryContent(
                 if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth().heightIn(max = 460.dp)
             LazyColumn(listModifier) {
                 items(entries, key = { it.url }) { page ->
+                    // The clickable form of ListItem rather than a clickable modifier:
+                    // it gives the row Material's own press feedback and shape.
                     ListItem(
-                        headlineContent = {
-                            Text(
-                                text = page.title.ifBlank { page.url },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
+                        onClick = { onOpen(page.url) },
                         supportingContent = {
                             if (tab == TAB_CONTINUE) {
                                 ProgressSummary(page, speechRate)
@@ -180,9 +181,14 @@ fun LibraryContent(
                                     )
                                 }
                             }
-                        } else null,
-                        modifier = Modifier.clickable { onOpen(page.url) }
-                    )
+                        } else null
+                    ) {
+                        Text(
+                            text = page.title.ifBlank { page.url },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }

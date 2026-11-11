@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
@@ -1256,7 +1257,7 @@ private fun BottomBarOverflow(
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.menu_user_manual)) },
                 onClick = { onOpenManual(); open = false },
-                leadingIcon = { Icon(Icons.Default.MenuBook, contentDescription = null) }
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) }
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.menu_settings)) },
