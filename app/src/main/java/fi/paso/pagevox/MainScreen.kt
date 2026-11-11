@@ -18,7 +18,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,6 +36,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +46,8 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -64,6 +71,9 @@ private val WIDE_LAYOUT_MIN_WIDTH = 600.dp
 // Wide enough for a 48dp touch target plus breathing room, narrow enough that
 // the rail costs the page far less than the bottom bar costs it in height.
 private val RAIL_WIDTH = 72.dp
+
+// The speed presets' button group: as wide as a menu goes, so five fit.
+private val SPEED_GROUP_WIDTH = 280.dp
 
 // How long Play waits for a page on its way before acting on what's there.
 private const val NAVIGATION_WAIT_MS = 15_000L
@@ -453,7 +463,8 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                 controller?.sendCustomCommand(
                     SessionCommand("playSentences", Bundle.EMPTY), args
                 )
-            }
+            },
+            playing = isPlaying
         )
     }
 
@@ -465,6 +476,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
             contentsOpen = showContents,
             onOpenContents = { openPanel(contents = !showContents) },
             isPlaying = isPlaying,
+            busy = viewModel.isLoading,
             hasSentences = viewModel.sentences.isNotEmpty(),
             speechRate = viewModel.speechRate,
             readerMode = viewModel.readerMode,
@@ -555,7 +567,7 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
         },
         bottomBar = {
             if (!wide) {
-                Column {
+                Column(Modifier.navigationBarsPadding()) {
                     scrubber()
                     controls(false)
                 }
@@ -565,18 +577,13 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
         if (wide) {
             Row(Modifier.padding(padding).fillMaxSize()) {
                 controls(true)
-                VerticalDivider()
                 Column(Modifier.weight(1f)) {
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         pageContent()
-                        if (viewModel.isLoading) {
-                            CircularProgressIndicator(Modifier.align(Alignment.Center))
-                        }
                     }
                     scrubber()
                 }
                 if (showLibrary || showContents) {
-                    VerticalDivider()
                     SidePanel(
                         title = stringResource(
                             if (showContents) R.string.panel_contents else R.string.menu_library
@@ -615,9 +622,9 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
                 }
             }
         } else {
+            // The loading animation is on the play button now, where the press was.
             Box(Modifier.padding(padding).fillMaxSize()) {
                 pageContent()
-                if (viewModel.isLoading) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
         }
     }
@@ -762,6 +769,7 @@ fun PlaybackControls(
     contentsOpen: Boolean,
     onOpenContents: () -> Unit,
     isPlaying: Boolean,
+    busy: Boolean,
     hasSentences: Boolean,
     speechRate: Float,
     readerMode: Boolean,
@@ -795,10 +803,10 @@ fun PlaybackControls(
     // lambda is what stops the bar and the rail drifting apart as controls come
     // and go.
     val items: @Composable () -> Unit = {
-        IconButton(onBack, enabled = canGoBack) {
+        IconButton(onBack, enabled = canGoBack, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.nav_back))
         }
-        IconButton(onForward) {
+        IconButton(onForward, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.nav_forward))
         }
         SkipButton(
@@ -809,12 +817,7 @@ fun PlaybackControls(
             onClick = onSkipPrevious,
             onLongClick = onSkipPreviousSection
         )
-        FloatingActionButton(onClick = onPlayPause) {
-            Icon(
-                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                stringResource(R.string.play_pause)
-            )
-        }
+        PlayPauseButton(isPlaying = isPlaying, busy = busy, wide = !wide, onClick = onPlayPause)
         SkipButton(
             icon = Icons.Default.SkipNext,
             label = stringResource(R.string.next_sentence),
@@ -826,25 +829,17 @@ fun PlaybackControls(
         if (wide) {
             // Room to hand back the actions the phone layout has to hide.
             ControlSeparator()
-            IconButton(onUp, enabled = canGoUp) {
+            IconButton(onUp, enabled = canGoUp, shapes = IconButtonDefaults.shapes()) {
                 Icon(Icons.Default.ArrowUpward, stringResource(R.string.menu_up_one_level))
             }
-            IconButton(onHome) {
+            IconButton(onHome, shapes = IconButtonDefaults.shapes()) {
                 Icon(Icons.Default.Home, stringResource(R.string.menu_home))
             }
-            IconToggleButton(checked = libraryOpen, onCheckedChange = { onOpenLibrary() }) {
-                Icon(Icons.Default.Bookmarks, stringResource(R.string.menu_library))
-            }
-            IconToggleButton(checked = contentsOpen, onCheckedChange = { onOpenContents() }) {
-                Icon(Icons.AutoMirrored.Filled.FormatListBulleted, stringResource(R.string.panel_contents))
-            }
+            RailToggle(libraryOpen, { onOpenLibrary() }, Icons.Default.Bookmarks, stringResource(R.string.menu_library))
+            RailToggle(contentsOpen, { onOpenContents() }, Icons.AutoMirrored.Filled.FormatListBulleted, stringResource(R.string.panel_contents))
             ControlSeparator()
-            IconToggleButton(checked = readerMode, onCheckedChange = { onToggleReader() }) {
-                Icon(Icons.AutoMirrored.Filled.Article, stringResource(R.string.menu_reader_mode))
-            }
-            IconToggleButton(checked = followAlong, onCheckedChange = { onToggleFollowAlong() }) {
-                Icon(Icons.Default.Highlight, stringResource(R.string.menu_follow_along))
-            }
+            RailToggle(readerMode, { onToggleReader() }, Icons.AutoMirrored.Filled.Article, stringResource(R.string.menu_reader_mode))
+            RailToggle(followAlong, { onToggleFollowAlong() }, Icons.Default.Highlight, stringResource(R.string.menu_follow_along))
             ControlSeparator()
         }
         BottomBarOverflow(
@@ -871,31 +866,95 @@ fun PlaybackControls(
         )
     }
 
+    // Material 3 Expressive floating toolbars: a pill of controls standing off
+    // the edge of the screen instead of a bar fused to it.
     if (wide) {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            modifier = Modifier.fillMaxHeight()
+        // Scrollable because the rail also serves a phone in landscape, where
+        // the whole stack of controls is taller than the window. The scroll is
+        // outside the toolbar, which has to be measured at its full height.
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+                .padding(8.dp)
         ) {
-            // Scrollable because the rail also serves a phone in landscape, where
-            // the whole stack of controls is taller than the window.
-            Column(
-                modifier = Modifier
-                    .width(RAIL_WIDTH)
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            VerticalFloatingToolbar(
+                expanded = true,
+                colors = FloatingToolbarDefaults.standardFloatingToolbarColors()
             ) { items() }
         }
     } else {
-        BottomAppBar {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+        Box(
+            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            HorizontalFloatingToolbar(
+                expanded = true,
+                colors = FloatingToolbarDefaults.standardFloatingToolbarColors()
             ) { items() }
         }
     }
+}
+
+/**
+ * Play and pause as one large button that changes shape with the state: round
+ * while paused, a rounded square while reading, morphing between the two on a
+ * spring. While a page is being read in for the first press it shows Material's
+ * loading animation in place of the icon, so the wait is visible where the press
+ * was rather than in the middle of the page. [wide] is the wider form the
+ * horizontal toolbar has room for.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PlayPauseButton(isPlaying: Boolean, busy: Boolean, wide: Boolean, onClick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    FilledIconToggleButton(
+        checked = isPlaying,
+        onCheckedChange = { onClick() },
+        shapes = IconButtonDefaults.toggleableShapes(
+            shape = CircleShape,
+            pressedShape = MaterialTheme.shapes.medium,
+            checkedShape = MaterialTheme.shapes.large
+        ),
+        // Primary either way: it's the one button that matters, playing or not.
+        colors = IconButtonDefaults.filledIconToggleButtonColors(
+            containerColor = primary,
+            contentColor = onPrimary,
+            checkedContainerColor = primary,
+            checkedContentColor = onPrimary
+        ),
+        modifier = Modifier.size(
+            IconButtonDefaults.mediumContainerSize(
+                if (wide) IconButtonDefaults.IconButtonWidthOption.Wide
+                else IconButtonDefaults.IconButtonWidthOption.Uniform
+            )
+        )
+    ) {
+        if (busy) {
+            LoadingIndicator(Modifier.size(IconButtonDefaults.mediumIconSize + 8.dp), color = onPrimary)
+        } else {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                stringResource(R.string.play_pause),
+                modifier = Modifier.size(IconButtonDefaults.mediumIconSize)
+            )
+        }
+    }
+}
+
+/** A rail button that stays lit while its panel or mode is on, and squares off
+ *  when it is, as Material 3 Expressive toggles do. */
+@Composable
+private fun RailToggle(checked: Boolean, onToggle: () -> Unit, icon: ImageVector, label: String) {
+    FilledTonalIconToggleButton(
+        checked = checked,
+        onCheckedChange = { onToggle() },
+        shapes = IconButtonDefaults.toggleableShapes(),
+        colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
+            containerColor = Color.Transparent
+        )
+    ) { Icon(icon, label) }
 }
 
 /** Groups the rail's buttons. Rail-only by design: the bottom bar spreads its
@@ -919,16 +978,17 @@ private fun SidePanel(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = modifier.fillMaxHeight()
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = modifier.fillMaxHeight().padding(top = 4.dp, end = 8.dp, bottom = 8.dp)
     ) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMediumEmphasized,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -959,11 +1019,22 @@ private fun SkipButton(
     onLongClick: () -> Unit
 ) {
     val haptics = LocalHapticFeedback.current
+    // Squares off under the finger and springs back round, like the toolbar's
+    // other buttons. Hand-rolled for the same reason as the rest of this button.
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val corner by animateIntAsState(
+        targetValue = if (pressed) 28 else 50,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "skipPress"
+    )
     Box(
         modifier = Modifier
             .size(48.dp)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(percent = corner))
             .combinedClickable(
+                interactionSource = interaction,
+                indication = ripple(),
                 enabled = enabled,
                 onClickLabel = label,
                 // IconButton sets this for us; a hand-rolled clickable has to say
@@ -1102,16 +1173,32 @@ private fun BottomBarOverflow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp)
             )
-            SPEECH_RATE_PRESETS.forEach { rate ->
-                DropdownMenuItem(
-                    text = { Text(formatSpeed(rate)) },
-                    onClick = { onSetSpeed(rate); open = false },
-                    trailingIcon = {
-                        if (rate == speechRate) {
-                            Icon(Icons.Default.Check, stringResource(R.string.state_selected))
-                        }
+            // A connected button group: the presets read as one control with one
+            // choice made, and picking another leaves the menu open to compare.
+            Row(
+                Modifier.width(SPEED_GROUP_WIDTH).padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
+            ) {
+                SPEECH_RATE_PRESETS.forEachIndexed { i, rate ->
+                    ToggleButton(
+                        checked = rate == speechRate,
+                        onCheckedChange = { onSetSpeed(rate) },
+                        shapes = when (i) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            SPEECH_RATE_PRESETS.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        },
+                        // A visible container for the unpicked ones too, or on the
+                        // menu's own surface they read as loose labels, not a group.
+                        colors = ToggleButtonDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ),
+                        contentPadding = PaddingValues(horizontal = 2.dp),
+                        modifier = Modifier.weight(1f).semantics { role = Role.RadioButton }
+                    ) {
+                        Text(formatSpeed(rate), maxLines = 1, style = MaterialTheme.typography.labelLarge)
                     }
-                )
+                }
             }
             HorizontalDivider()
             // Reachable whatever the user sets as their home page — otherwise

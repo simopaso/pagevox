@@ -7,15 +7,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,7 +42,11 @@ import kotlin.math.roundToInt
  * section's heading above the sentence preview, so a long article reads as a set
  * of chapters rather than one undifferentiated bar.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+/** How far the wave rises and falls while reading, as a fraction of its full
+ *  height. Gentle: it says "reading", it shouldn't pull the eye off the page. */
+private const val WAVE_AMPLITUDE = 0.7f
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HorizontalReadingScrubber(
     totalSentences: Int,
@@ -51,38 +56,45 @@ fun HorizontalReadingScrubber(
     sectionTitleAt: (Int) -> String?,
     onSeekChange: (Int) -> Unit,    // during drag: live scroll preview
     onSeekFinished: (Int) -> Unit,  // on release/tap: commit playback
+    playing: Boolean,               // the track waves while reading, lies flat when paused
     modifier: Modifier = Modifier
 ) {
     if (totalSentences <= 0) return
     val maxIdx = (totalSentences - 1).coerceAtLeast(0)
 
     var dragging by remember { mutableStateOf(false) }
-    var sliderPos by remember { mutableFloatStateOf(currentIndex.coerceAtLeast(0).toFloat()) }
+    // State-based, because in material3 1.5 that is the only Slider that takes a
+    // custom track. Rebuilt when the page's length changes, which is a new range.
+    val sliderState = remember(maxIdx) {
+        SliderState(currentIndex.coerceIn(0, maxIdx).toFloat(), 0, 0f..maxIdx.toFloat())
+    }
     // Only re-issue the live-scroll preview when the rounded sentence actually
     // changes, so a single drag doesn't fire a window.find on every pixel.
     var lastEmitted by remember { mutableIntStateOf(-1) }
 
     // Track TTS-driven progress only while the user isn't actively scrubbing,
     // otherwise the thumb would fight the finger.
-    LaunchedEffect(currentIndex) {
-        if (!dragging) sliderPos = currentIndex.coerceAtLeast(0).toFloat()
+    LaunchedEffect(currentIndex, sliderState) {
+        if (!dragging) sliderState.value = currentIndex.coerceIn(0, maxIdx).toFloat()
     }
 
-    val shownIndex = sliderPos.roundToInt().coerceIn(0, maxIdx)
+    val shownIndex = sliderState.value.roundToInt().coerceIn(0, maxIdx)
     val previewText = sentences.getOrNull(shownIndex).orEmpty()
     val sectionTitle = sectionTitleAt(shownIndex)
-    val tickColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.4f)
 
+    // A card above the controls rather than a full-width band: Material 3
+    // Expressive groups related things in rounded containers.
     Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        modifier = modifier.fillMaxWidth()
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
     ) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp)) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)) {
             if (sectionTitle != null) {
                 Text(
                     text = sectionTitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMediumEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -107,10 +119,10 @@ fun HorizontalReadingScrubber(
             }
             if (maxIdx > 0) {
                 Slider(
-                    value = sliderPos.coerceIn(0f, maxIdx.toFloat()),
+                    state = sliderState,
                     onValueChange = { v ->
                         dragging = true
-                        sliderPos = v
+                        sliderState.value = v
                         val idx = v.roundToInt().coerceIn(0, maxIdx)
                         if (idx != lastEmitted) {
                             lastEmitted = idx
@@ -118,39 +130,52 @@ fun HorizontalReadingScrubber(
                         }
                     },
                     onValueChangeFinished = {
-                        onSeekFinished(sliderPos.roundToInt().coerceIn(0, maxIdx))
+                        onSeekFinished(sliderState.value.roundToInt().coerceIn(0, maxIdx))
                         dragging = false
                         lastEmitted = -1
                     },
-                    valueRange = 0f..maxIdx.toFloat(),
                     track = { state ->
-                        // Section marks are drawn over the stock track rather than
-                        // via the Slider's own `steps` ticks: steps are evenly
-                        // spaced *and* quantize the value, and sections are neither
-                        // evenly spaced nor a constraint on where you may seek.
-                        Box(Modifier.fillMaxWidth()) {
-                            SliderDefaults.Track(sliderState = state)
-                            if (sectionStarts.isNotEmpty()) {
-                                Canvas(Modifier.matchParentSize()) {
-                                    val stroke = 2.dp.toPx()
-                                    sectionStarts.forEach { start ->
-                                        // The mark at sentence 0 would sit under the
-                                        // track's rounded start cap; skip it.
-                                        if (start <= 0 || start > maxIdx) return@forEach
-                                        val x = (start.toFloat() / maxIdx) * size.width
-                                        drawLine(
-                                            color = tickColor,
-                                            start = Offset(x, size.height * 0.2f),
-                                            end = Offset(x, size.height * 0.8f),
-                                            strokeWidth = stroke,
-                                            cap = StrokeCap.Round
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        ScrubberTrack(state, maxIdx, sectionStarts, waving = playing && !dragging)
                     }
                 )
+            }
+        }
+    }
+}
+
+/**
+ * The reading progress as a wave, the way Android draws a playing media item: it
+ * moves while reading and settles into a flat line on pause, so the state shows
+ * even with the sound down. Section marks are drawn over it rather than through
+ * the Slider's own `steps`, which are evenly spaced *and* quantize the value;
+ * sections are neither evenly spaced nor a constraint on where you may seek.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ScrubberTrack(state: SliderState, maxIdx: Int, sectionStarts: List<Int>, waving: Boolean) {
+    val markColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        // Keyed on the state: the indicator only asks for its amplitude again when
+        // the progress moves, and on pause the progress stops moving, so the wave
+        // stayed up. A fresh indicator picks up the new amplitude at once.
+        key(waving) {
+            LinearWavyProgressIndicator(
+                progress = { if (maxIdx > 0) (state.value / maxIdx).coerceIn(0f, 1f) else 0f },
+                amplitude = { if (waving) WAVE_AMPLITUDE else 0f },
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (sectionStarts.isNotEmpty()) {
+            Canvas(Modifier.matchParentSize()) {
+                val radius = 2.dp.toPx()
+                sectionStarts.forEach { start ->
+                    // A mark at sentence 0 would sit on the track's rounded start; skip it.
+                    if (start <= 0 || start > maxIdx) return@forEach
+                    val x = (start.toFloat() / maxIdx) * size.width
+                    drawCircle(markColor, radius, Offset(x, size.height / 2))
+                }
             }
         }
     }

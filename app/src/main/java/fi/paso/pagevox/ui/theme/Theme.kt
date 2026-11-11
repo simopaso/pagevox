@@ -3,7 +3,9 @@ package fi.paso.pagevox.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -90,6 +92,7 @@ private val DarkColorScheme = darkColorScheme(
     surfaceContainerHighest = md_dark_surfaceContainerHighest,
 )
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PageVoxTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -119,8 +122,12 @@ fun PageVoxTheme(
         }
     }
 
-    MaterialTheme(
+    // Material 3 Expressive: the same colours, with the expressive motion scheme,
+    // whose springs overshoot a little, for every component that animates (the
+    // play button's change of shape, the toolbar, menus, the slider).
+    MaterialExpressiveTheme(
         colorScheme = colorScheme,
+        motionScheme = MotionScheme.expressive(),
         typography = Typography,
         content = content
     )

@@ -38,11 +38,11 @@
 - **Share & open-with** — send text or links from other apps to PageVox, or set it as a handler for `http`/`https` links.
 - **Resumes where you left off** — the last page and reading position are restored on launch, and every page in your history remembers its own reading position, by the sentence itself, so it survives the page changing. Opening a page you had started shows and highlights that place before you press play. After a break of more than a few minutes, reading starts a couple of sentences earlier to help you find the thread.
 - **Big screens and foldables** — on an unfolded foldable, a tablet or a phone in landscape the controls move into a side rail and the page keeps the full height of the window, with the library or the page's contents available as a panel beside the page rather than on top of it. Folding, unfolding and rotating keep the page loaded and the reading position intact.
-- **Material You** — dynamic color, edge-to-edge, and light/dark theming.
+- **Material 3 Expressive** — dynamic color, spring motion, floating toolbars, a play button that changes shape with the state, and a reading progress line that waves while reading; edge-to-edge, light and dark.
 
 ## Tech stack
 
-- **Kotlin** + **Jetpack Compose** with **Material 3** (dynamic color / Material You)
+- **Kotlin** + **Jetpack Compose** with **Material 3 Expressive** (material3 1.5, dynamic color / Material You)
 - **Media3** (`media3-session`, `media3-exoplayer`) for the media session, notification, and progress bar
 - Android **TextToSpeech** for narration
 - **WebView** (+ `androidx.webkit` for algorithmic dark rendering) for page display and the CSS Custom Highlight API
@@ -99,7 +99,7 @@ The debug APK is written to `app/build/outputs/apk/debug/`. Or open the project 
 
 ## Project status
 
-Personal project, actively developed. Current version: **2.28**.
+Personal project, actively developed. Current version: **2.29**.
 
 ## Supporting development
 
