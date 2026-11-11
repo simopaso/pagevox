@@ -9,6 +9,7 @@
     <string name="nav_back">Tillbaka</string>
     <string name="nav_forward">Framåt</string>
     <string name="play_pause">Spela upp eller pausa</string>
+    <string name="loading">Läser in</string>
     <string name="previous_sentence">Föregående mening</string>
     <string name="next_sentence">Nästa mening</string>
     <string name="previous_section">Föregående avsnitt</string>

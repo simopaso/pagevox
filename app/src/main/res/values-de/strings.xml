@@ -11,6 +11,7 @@
     <string name="nav_back">Zurück</string>
     <string name="nav_forward">Vorwärts</string>
     <string name="play_pause">Wiedergabe oder Pause</string>
+    <string name="loading">Wird geladen</string>
     <string name="previous_sentence">Vorheriger Satz</string>
     <string name="next_sentence">Nächster Satz</string>
     <string name="previous_section">Vorheriger Abschnitt</string>

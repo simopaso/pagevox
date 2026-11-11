@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -30,8 +31,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
+/** How far the wave rises and falls while reading, as a fraction of its full
+ *  height. Gentle: it says "reading", it shouldn't pull the eye off the page. */
+private const val WAVE_AMPLITUDE = 0.7f
+
 /**
- * Full-width horizontal scrubber shown just above the playback controls. Drag or
+ * The reading position, as a card just above the playback controls. Drag or
  * tap the bar to move the reading position; the sentence under the thumb is
  * previewed live above the bar, and on release playback (re)starts from there.
  * Doubles as the "now reading" readout while playing (the thumb tracks TTS
@@ -42,10 +47,6 @@ import kotlin.math.roundToInt
  * section's heading above the sentence preview, so a long article reads as a set
  * of chapters rather than one undifferentiated bar.
  */
-/** How far the wave rises and falls while reading, as a fraction of its full
- *  height. Gentle: it says "reading", it shouldn't pull the eye off the page. */
-private const val WAVE_AMPLITUDE = 0.7f
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HorizontalReadingScrubber(
@@ -157,11 +158,14 @@ private fun ScrubberTrack(state: SliderState, maxIdx: Int, sectionStarts: List<I
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         // Keyed on the state: the indicator only asks for its amplitude again when
         // the progress moves, and on pause the progress stops moving, so the wave
-        // stayed up. A fresh indicator picks up the new amplitude at once.
+        // stayed up. A fresh indicator picks up the new amplitude at once. Paused,
+        // the wave's travel stops too: a flat line has nothing to move, and moving
+        // it anyway would redraw the card every frame for as long as it sits there.
         key(waving) {
             LinearWavyProgressIndicator(
                 progress = { if (maxIdx > 0) (state.value / maxIdx).coerceIn(0f, 1f) else 0f },
                 amplitude = { if (waving) WAVE_AMPLITUDE else 0f },
+                waveSpeed = if (waving) WavyProgressIndicatorDefaults.LinearDeterminateWavelength else 0.dp,
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.secondaryContainer,
                 modifier = Modifier.fillMaxWidth()

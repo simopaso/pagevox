@@ -20,6 +20,7 @@
     <string name="nav_back">Back</string>
     <string name="nav_forward">Forward</string>
     <string name="play_pause">Play/Pause</string>
+    <string name="loading">Loading</string>
     <string name="previous_sentence">Previous sentence</string>
     <string name="next_sentence">Next sentence</string>
     <string name="previous_section">Previous section</string>

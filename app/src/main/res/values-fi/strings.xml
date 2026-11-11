@@ -9,6 +9,7 @@
     <string name="nav_back">Takaisin</string>
     <string name="nav_forward">Eteenpäin</string>
     <string name="play_pause">Toista tai keskeytä</string>
+    <string name="loading">Ladataan</string>
     <string name="previous_sentence">Edellinen virke</string>
     <string name="next_sentence">Seuraava virke</string>
     <string name="previous_section">Edellinen osio</string>

@@ -17,6 +17,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -46,10 +48,12 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
@@ -68,9 +72,9 @@ private const val SUPPORT_URL = "https://paypal.me/SimoPaso"
 // a tablet, and a phone in landscape all clear it, a folded phone does not.
 private val WIDE_LAYOUT_MIN_WIDTH = 600.dp
 
-// Wide enough for a 48dp touch target plus breathing room, narrow enough that
-// the rail costs the page far less than the bottom bar costs it in height.
-private val RAIL_WIDTH = 72.dp
+// Below this the phone toolbar's Play button drops its wide form, so the six
+// controls still fit on a small screen or with a large display size.
+private val COMPACT_TOOLBAR_WIDTH = 360.dp
 
 // The speed presets' button group: as wide as a menu goes, so five fit.
 private val SPEED_GROUP_WIDTH = 280.dp
@@ -754,9 +758,10 @@ fun MainScreen(viewModel: MainViewModel, controller: MediaController?) {
 }
 
 /**
- * The playback controls, in whichever shape the window calls for: a bar across
- * the bottom on a phone, or a rail down the leading edge when the window is wide
- * enough that a full-width bar would strand the buttons a hand-span apart.
+ * The playback controls, in whichever shape the window calls for: a floating
+ * toolbar along the bottom on a phone, or a vertical one down the leading edge
+ * when the window is wide enough that a bottom row would strand the buttons a
+ * hand-span apart.
  *
  * Same buttons in the same order either way — folding the device should not
  * rearrange the user's controls — except that the rail, having room, promotes a
@@ -801,8 +806,15 @@ fun PlaybackControls(
 ) {
     // One list of buttons, two containers. Emitting the items from a single
     // lambda is what stops the bar and the rail drifting apart as controls come
-    // and go.
-    val items: @Composable () -> Unit = {
+    // and go. Its argument is the Play button's form, which the container decides.
+    val railScroll = rememberScrollState()
+    // A press that has to wait for the page shows that on the Play button. In the
+    // rail the button can have been scrolled away (a phone held sideways), so
+    // bring it back into view: otherwise nothing on screen says the press landed.
+    LaunchedEffect(busy) {
+        if (busy && wide) railScroll.animateScrollTo(0)
+    }
+    val items: @Composable (IconButtonDefaults.IconButtonWidthOption) -> Unit = { playWidth ->
         IconButton(onBack, enabled = canGoBack, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.nav_back))
         }
@@ -817,7 +829,7 @@ fun PlaybackControls(
             onClick = onSkipPrevious,
             onLongClick = onSkipPreviousSection
         )
-        PlayPauseButton(isPlaying = isPlaying, busy = busy, wide = !wide, onClick = onPlayPause)
+        PlayPauseButton(isPlaying = isPlaying, busy = busy, widthOption = playWidth, onClick = onPlayPause)
         SkipButton(
             icon = Icons.Default.SkipNext,
             label = stringResource(R.string.next_sentence),
@@ -875,23 +887,36 @@ fun PlaybackControls(
         Box(
             Modifier
                 .fillMaxHeight()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(railScroll)
                 .padding(8.dp)
         ) {
             VerticalFloatingToolbar(
                 expanded = true,
                 colors = FloatingToolbarDefaults.standardFloatingToolbarColors()
-            ) { items() }
+            ) { items(IconButtonDefaults.IconButtonWidthOption.Uniform) }
         }
     } else {
-        Box(
-            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            HorizontalFloatingToolbar(
-                expanded = true,
-                colors = FloatingToolbarDefaults.standardFloatingToolbarColors()
-            ) { items() }
+        // Six fixed-size controls, and nothing in a toolbar shrinks: on a narrow
+        // window (a small phone, or the display size turned up) the row is wider
+        // than the screen, and the end of it, the menu with Settings in it, was
+        // simply cut off. So the Play button gives up its wide form first, and if
+        // that still isn't enough the row scrolls rather than losing a control.
+        // fillMaxWidth before the scroll keeps the row centred when it does fit.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val playWidth = if (maxWidth < COMPACT_TOOLBAR_WIDTH) IconButtonDefaults.IconButtonWidthOption.Uniform
+                else IconButtonDefaults.IconButtonWidthOption.Wide
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                HorizontalFloatingToolbar(
+                    expanded = true,
+                    colors = FloatingToolbarDefaults.standardFloatingToolbarColors()
+                ) { items(playWidth) }
+            }
         }
     }
 }
@@ -901,14 +926,26 @@ fun PlaybackControls(
  * while paused, a rounded square while reading, morphing between the two on a
  * spring. While a page is being read in for the first press it shows Material's
  * loading animation in place of the icon, so the wait is visible where the press
- * was rather than in the middle of the page. [wide] is the wider form the
- * horizontal toolbar has room for.
+ * was rather than in the middle of the page. [widthOption] is Wide where the
+ * horizontal toolbar has room for it.
+ *
+ * The label is on the button itself, not on the icon, because while loading
+ * there is no icon: the loading animation has no description, and the button
+ * was announced to TalkBack without a name. It now keeps "Play/Pause" and adds
+ * that it is loading.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun PlayPauseButton(isPlaying: Boolean, busy: Boolean, wide: Boolean, onClick: () -> Unit) {
+private fun PlayPauseButton(
+    isPlaying: Boolean,
+    busy: Boolean,
+    widthOption: IconButtonDefaults.IconButtonWidthOption,
+    onClick: () -> Unit
+) {
     val primary = MaterialTheme.colorScheme.primary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
+    val label = stringResource(R.string.play_pause)
+    val loading = stringResource(R.string.loading)
     FilledIconToggleButton(
         checked = isPlaying,
         onCheckedChange = { onClick() },
@@ -924,19 +961,19 @@ private fun PlayPauseButton(isPlaying: Boolean, busy: Boolean, wide: Boolean, on
             checkedContainerColor = primary,
             checkedContentColor = onPrimary
         ),
-        modifier = Modifier.size(
-            IconButtonDefaults.mediumContainerSize(
-                if (wide) IconButtonDefaults.IconButtonWidthOption.Wide
-                else IconButtonDefaults.IconButtonWidthOption.Uniform
-            )
-        )
+        modifier = Modifier
+            .size(IconButtonDefaults.mediumContainerSize(widthOption))
+            .semantics {
+                contentDescription = label
+                if (busy) stateDescription = loading
+            }
     ) {
         if (busy) {
             LoadingIndicator(Modifier.size(IconButtonDefaults.mediumIconSize + 8.dp), color = onPrimary)
         } else {
             Icon(
                 if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                stringResource(R.string.play_pause),
+                contentDescription = null,
                 modifier = Modifier.size(IconButtonDefaults.mediumIconSize)
             )
         }
@@ -957,8 +994,8 @@ private fun RailToggle(checked: Boolean, onToggle: () -> Unit, icon: ImageVector
     ) { Icon(icon, label) }
 }
 
-/** Groups the rail's buttons. Rail-only by design: the bottom bar spreads its
- *  buttons with SpaceEvenly, which an extra child would throw off. */
+/** Groups the rail's buttons. Rail-only: the phone toolbar has no room to spare
+ *  for dividers between six controls. */
 @Composable
 private fun ControlSeparator() {
     HorizontalDivider(Modifier.padding(vertical = 4.dp).width(40.dp))
@@ -1194,9 +1231,22 @@ private fun BottomBarOverflow(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         ),
                         contentPadding = PaddingValues(horizontal = 2.dp),
-                        modifier = Modifier.weight(1f).semantics { role = Role.RadioButton }
+                        // ToggleButton's own toggle semantics, unchanged: overriding
+                        // the role to RadioButton gave TalkBack a radio button with
+                        // an on/off state.
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(formatSpeed(rate), maxLines = 1, style = MaterialTheme.typography.labelLarge)
+                        // Shrinks to fit rather than clipping: five to a menu leaves
+                        // about 52dp a button, and with a large font "1.25×" read "1.2".
+                        Text(
+                            formatSpeed(rate),
+                            maxLines = 1,
+                            style = MaterialTheme.typography.labelLarge,
+                            autoSize = TextAutoSize.StepBased(
+                                minFontSize = 8.sp,
+                                maxFontSize = MaterialTheme.typography.labelLarge.fontSize
+                            )
+                        )
                     }
                 }
             }
